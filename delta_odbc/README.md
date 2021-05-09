@@ -36,7 +36,7 @@ $ pip install pyodbc
 続いて、ODBCの環境設定を行います。
 ODBCの接続のための情報はDatabricksのCluster管理画面(SQL Analyticsの場合はEndpoint管理画面)から確認できます。
 
-![clusterodbc](clusterodbc.png)
+![clusterodbc](cluster0dbc.png)
 
 また、接続のための認証としてUserのAccess Tokenが必要になります。
 Tokenを作成するにはDatabrciksのワークスペース右上にあるユーザー設定アイコンから`User Settings`をクリックします。
