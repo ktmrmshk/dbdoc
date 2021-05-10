@@ -10,8 +10,7 @@ Databricksの外部環境(ローカルPC上など)からワークスペース内
 1. 外部環境からMLflowのコードを実行する(runを実行する)
 1. Databricks上のMLflowページからrunの結果を確認する
 
-1. DatabricksワークスペースにMLflowのexperimentを作成する
-------
+## 1. DatabricksワークスペースにMLflowのexperimentを作成する
 
 Databricksのワークスペース内に今回使用するMLflowのExperimentを作成します。
 "Home"または"Workspace"アイコンからNotebookディレクトリを開き、右クリックメニューから`Create > MLflow Experiment`で作成できます。
@@ -25,8 +24,7 @@ Databricksのワークスペース内に今回使用するMLflowのExperimentを
 
 ![eperimentid](eperimentid.png)
 
-2. Databricks上のMLflowにアクセスするための情報確認
------
+## 2. Databricks上のMLflowにアクセスするための情報確認
 
 外部からDatabricks上のMLflowを参照するには以下の情報が必要になります。
 
@@ -36,8 +34,7 @@ Databricksのワークスペース内に今回使用するMLflowのExperimentを
 * User Access Token
   - ワークスペースの右上にある"User Settings"からトークンを発行してください。
 
-3. 外部環境からMLflowのコードを実行する(runを実行する)
------
+## 3. 外部環境からMLflowのコードを実行する(runを実行する)
 
 外部環境(ローカルPCなど)からMLflowを実行します。
 ここでは、Linux環境で実行する例を見ていきます。
@@ -74,8 +71,7 @@ $ python mlflow_ctr.py
 
 
 
-4. Databricks上のMLflowページからrunの結果を確認する
------
+## 4. Databricks上のMLflowページからrunの結果を確認する
 
 再びDatabricks上のMLflow Experimentページを参照します。
 上記で実行したrunの情報が登録されていることが確認できます。
