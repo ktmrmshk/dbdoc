@@ -6,8 +6,7 @@ DatabricksのDelta Lake上にあるデータを利用する場合、ODBC/JDBCに
 方法を見ていきます。
 
 
-1. 環境構築(Databerick ODBCドライバのインスール)
---------------
+## 1. 環境構築(Databerick ODBCドライバのインスール)
 
 最初にDatabricks ODBCドライバを[公式サイト](https://databricks.com/spark/odbc-drivers-download)からダウンロードしてインストールします。
 使用する環境に合わせてドライバーを選択してください。
@@ -21,8 +20,7 @@ $ unzip SimbaSparkODBC-2.6.16.1019-Debian-64bit.zip
 $ sudo apt install ./simbaspark_2.6.16.1019-2_amd64.deb
 ```
 
-2. ODBCライブラリのインストール
-----------
+## 2. ODBCライブラリのインストール
 
 続いて、pandasからODBCを利用するためのライブラリ(`pyodbc`)をインスールします。
 
@@ -78,8 +76,7 @@ Driver = /opt/simba/spark/lib/64/libsparkodbc_sb64.so
 ```
 
 
-3. PandasからDelta Lake上のデータを参照する
-----------
+## 3. PandasからDelta Lake上のデータを参照する
 
 最後にpandasからDatabrciks Delta Lake上にあるデータ(テーブル)を参照します。
 (すでにDatabeicks Delta Lake上に`db=default`、`table=diamonds`が作成されている前提)
