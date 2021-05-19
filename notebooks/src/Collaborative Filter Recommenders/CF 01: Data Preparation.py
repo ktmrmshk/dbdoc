@@ -44,6 +44,42 @@ import shutil
 
 # COMMAND ----------
 
+# DBTITLE 1,サンプルデータをストレージ上に配置する(必要に応じて実行してください。)
+# MAGIC %sh
+# MAGIC 
+# MAGIC #### サンプルデータをストレージ上に配置する
+# MAGIC #### 必要に応じてコメントアウトを外して実行してください。
+# MAGIC 
+# MAGIC rm -rf /dbfs/tmp/mnt/instacart
+# MAGIC rm -rf tmpdir
+# MAGIC 
+# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/aisle
+# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/departments
+# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/order_products
+# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/orders
+# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/products
+# MAGIC 
+# MAGIC wget -nc 'https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/instacart-market-basket-analysis.zip'
+# MAGIC unzip instacart-market-basket-analysis.zip -d tmpdir
+# MAGIC 
+# MAGIC cd tmpdir
+# MAGIC 
+# MAGIC unzip aisles.csv.zip
+# MAGIC unzip departments.csv.zip
+# MAGIC unzip order_products__prior.csv.zip 
+# MAGIC unzip order_products__train.csv.zip
+# MAGIC unzip orders.csv.zip 
+# MAGIC unzip products.csv.zip
+# MAGIC 
+# MAGIC cp aisles.csv /dbfs/tmp/mnt/instacart/bronze/aisle/
+# MAGIC cp departments.csv /dbfs/tmp/mnt/instacart/bronze/departments/
+# MAGIC cp order_products__prior.csv /dbfs/tmp/mnt/instacart/bronze/order_products/
+# MAGIC cp order_products__train.csv /dbfs/tmp/mnt/instacart/bronze/order_products/
+# MAGIC cp orders.csv /dbfs/tmp/mnt/instacart/bronze/orders/
+# MAGIC cp products.csv /dbfs/tmp/mnt/instacart/bronze/products/
+
+# COMMAND ----------
+
 # DBTITLE 1,databaseを作成する
 _ = spark.sql('CREATE DATABASE IF NOT EXISTS instacart')
 
@@ -60,7 +96,7 @@ _ = spark.sql('CREATE DATABASE IF NOT EXISTS instacart')
 _ = spark.sql('DROP TABLE IF EXISTS instacart.orders')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/mnt/instacart/silver/orders', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/orders', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 orders_schema = StructType([
@@ -78,7 +114,7 @@ orders = (
   spark
     .read
     .csv(
-      '/mnt/instacart/bronze/orders',
+      '/tmp/mnt/instacart/bronze/orders',
       header=True,
       schema=orders_schema
       )
@@ -97,20 +133,20 @@ orders_transformed = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/silver/orders')
+    .save('/tmp/mnt/instacart/silver/orders')
   )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.orders
   USING DELTA
-  LOCATION '/mnt/instacart/silver/orders'
+  LOCATION '/tmp/mnt/instacart/silver/orders'
   ''')
 
 # 準備したデータを確認する
 display(
   spark.table('instacart.orders')
-  )
+)
 
 # COMMAND ----------
 
@@ -119,7 +155,7 @@ display(
 _ = spark.sql('DROP TABLE IF EXISTS instacart.products')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/mnt/instacart/silver/products', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/products', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 products_schema = StructType([
@@ -134,7 +170,7 @@ products = (
   spark
     .read
     .csv(
-      '/mnt/instacart/bronze/products',
+      '/tmp/mnt/instacart/bronze/products',
       header=True,
       schema=products_schema
       )
@@ -146,14 +182,14 @@ products = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/silver/products')
+    .save('/tmp/mnt/instacart/silver/products')
   )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.products
   USING DELTA
-  LOCATION '/mnt/instacart/silver/products'
+  LOCATION '/tmp/mnt/instacart/silver/products'
   ''')
 
 # 準備したデータを確認する
@@ -168,7 +204,7 @@ display(
 _ = spark.sql('DROP TABLE IF EXISTS instacart.order_products')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/mnt/instacart/silver/order_products', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/order_products', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 order_products_schema = StructType([
@@ -183,7 +219,7 @@ order_products = (
   spark
     .read
     .csv(
-      '/mnt/instacart/bronze/order_products',
+      '/mnt/tmp/instacart/bronze/order_products',
       header=True,
       schema=order_products_schema
       )
@@ -195,14 +231,14 @@ order_products = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/silver/order_products')
+    .save('/tmp/mnt/instacart/silver/order_products')
   )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.order_products
   USING DELTA
-  LOCATION '/mnt/instacart/silver/order_products'
+  LOCATION '/tmp/mnt/instacart/silver/order_products'
   ''')
 
 # 準備したデータを確認する
@@ -217,7 +253,7 @@ display(
 _ = spark.sql('DROP TABLE IF EXISTS instacart.departments')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/mnt/instacart/silver/departments', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/departments', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 departments_schema = StructType([
@@ -230,7 +266,7 @@ departments = (
   spark
     .read
     .csv(
-      '/mnt/instacart/bronze/departments',
+      '/tmp/mnt/instacart/bronze/departments',
       header=True,
       schema=departments_schema
       )
@@ -242,14 +278,14 @@ departments = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/silver/departments')
+    .save('/tmp/mnt/instacart/silver/departments')
   )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.departments
   USING DELTA
-  LOCATION '/mnt/instacart/silver/departments'
+  LOCATION '/tmp/mnt/instacart/silver/departments'
   ''')
 
 # 準備したデータを確認する
@@ -264,7 +300,7 @@ display(
 _ = spark.sql('DROP TABLE IF EXISTS instacart.aisles')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/mnt/instacart/silver/aisles', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/aisles', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 aisles_schema = StructType([
@@ -277,7 +313,7 @@ aisles = (
   spark
     .read
     .csv(
-      '/mnt/instacart/bronze/aisles',
+      '/tmp/mnt/instacart/bronze/aisles',
       header=True,
       schema=aisles_schema
       )
@@ -289,14 +325,14 @@ aisles = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/silver/aisles')
+    .save('/tmp/mnt/instacart/silver/aisles')
   )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.aisles
   USING DELTA
-  LOCATION '/mnt/instacart/silver/aisles'
+  LOCATION '/tmp/mnt/instacart/silver/aisles'
   ''')
 
 # 準備したデータを確認する
@@ -313,7 +349,7 @@ display(
 # COMMAND ----------
 
 # 古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/mnt/instacart/gold/ratings__user_product_orders', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/ratings__user_product_orders', ignore_errors=True)
 
 # ユーザーごとに購入した回数を算出する
 user_product_orders = (
@@ -330,14 +366,14 @@ user_product_orders = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/gold/ratings__user_product_orders')
+    .save('/tmp/mnt/instacart/gold/ratings__user_product_orders')
   )
 
 # 書き込んだ結果を結果をテーブル参照する
 display(
   spark.sql('''
     SELECT * 
-    FROM DELTA.`/mnt/instacart/gold/ratings__user_product_orders` 
+    FROM DELTA.`/tmp/mnt/instacart/gold/ratings__user_product_orders` 
     ORDER BY split, user_id, product_id
     ''')
 )
@@ -374,7 +410,7 @@ display(
 # MAGIC       user_id,
 # MAGIC       product_id,
 # MAGIC       SUM(purchases) as purchases
-# MAGIC     FROM DELTA.`/mnt/instacart/gold/ratings__user_product_orders`
+# MAGIC     FROM DELTA.`/tmp/mnt/instacart/gold/ratings__user_product_orders`
 # MAGIC     GROUP BY split, user_id, product_id
 # MAGIC     )
 # MAGIC   SELECT
@@ -429,7 +465,7 @@ display(
 # MAGIC       split,
 # MAGIC       product_id,
 # MAGIC       SUM(purchases) as purchases
-# MAGIC     FROM DELTA.`/mnt/instacart/gold/ratings__user_product_orders`
+# MAGIC     FROM DELTA.`/tmp/mnt/instacart/gold/ratings__user_product_orders`
 # MAGIC     GROUP BY split, product_id
 # MAGIC     )
 # MAGIC   SELECT
