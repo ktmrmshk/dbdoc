@@ -22,23 +22,26 @@ import shutil
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Load the Data
+# MAGIC %md # Step 1: データを読み込む
 # MAGIC 
-# MAGIC The basic building block of this kind of recommendation is customer transaction data. To provide us data of this type, we'll be using the popular [Instacart dataset](https://www.kaggle.com/c/instacart-market-basket-analysis). This dataset provides cart-level details on over 3 million grocery orders placed by over 200,000 Instacart users across of portfolio of nearly 50,000 products.
+# MAGIC この種のレコメンデーションの基本的な構成要素は、顧客の取引データです。この種のデータを提供するために、私たちは人気のある[Instacart dataset](https://www.kaggle.com/c/instacart-market-basket-analysis)を使用します。このデータセットは、200,000人以上のInstacartユーザーが約50,000の商品の中から300万件以上の食料品を注文した際のカートレベルの詳細を提供しています。
 # MAGIC 
-# MAGIC **NOTE** Due to the terms and conditions by which these data are made available, anyone interested in recreating this work will need to download the data files from Kaggle and upload them to a folder structure as described below.
+# MAGIC **注意** データの提供条件により、この作品を再現するには、Kaggleからデータファイルをダウンロードし、以下のようなフォルダ構造にアップロードする必要があります。
 # MAGIC 
 # MAGIC The primary data files available for download are organized as follows under a pre-defined [mount point](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs) that we have named */mnt/instacart*:
+# MAGIC 
+# MAGIC ダウンロードしたデータファイルは以下のようにストレージ上(`/mnt/instacart`配下)に配置されているとします。
+# MAGIC 
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/instacart_filedownloads.png' width=250>
 # MAGIC 
 # MAGIC 
 # MAGIC 
-# MAGIC Read into dataframes, these files form the following data model which captures the products customers have included in individual transactions:
+# MAGIC これらのファイルをデータフレームに読み込み、次のようなデータモデルを構築し、お客様が個々の取引で購入した商品を把握して行きましょう。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/instacart_schema2.png' width=300>
 # MAGIC 
-# MAGIC We will apply minimal transformations to this data, persisting it to the Delta Lake format for speedier access:
+# MAGIC このデータには最小限の変換を実施した後、より高速なアクセスのためにDelta Lake形式で保存します。
 
 # COMMAND ----------
 
