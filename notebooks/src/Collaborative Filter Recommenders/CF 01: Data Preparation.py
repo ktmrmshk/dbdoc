@@ -53,7 +53,7 @@ import shutil
 # MAGIC rm -rf /dbfs/tmp/mnt/instacart
 # MAGIC rm -rf tmpdir
 # MAGIC 
-# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/aisle
+# MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/aisles
 # MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/departments
 # MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/order_products
 # MAGIC mkdir -p /dbfs/tmp/mnt/instacart/bronze/orders
@@ -71,7 +71,7 @@ import shutil
 # MAGIC unzip orders.csv.zip 
 # MAGIC unzip products.csv.zip
 # MAGIC 
-# MAGIC cp aisles.csv /dbfs/tmp/mnt/instacart/bronze/aisle/
+# MAGIC cp aisles.csv /dbfs/tmp/mnt/instacart/bronze/aisles/
 # MAGIC cp departments.csv /dbfs/tmp/mnt/instacart/bronze/departments/
 # MAGIC cp order_products__prior.csv /dbfs/tmp/mnt/instacart/bronze/order_products/
 # MAGIC cp order_products__train.csv /dbfs/tmp/mnt/instacart/bronze/order_products/
@@ -219,7 +219,7 @@ order_products = (
   spark
     .read
     .csv(
-      '/mnt/tmp/instacart/bronze/order_products',
+      '/tmp/mnt/instacart/bronze/order_products',
       header=True,
       schema=order_products_schema
       )
@@ -311,13 +311,13 @@ aisles_schema = StructType([
 # CSVファイルからデータを読み込む
 aisles = (
   spark
-    .read
-    .csv(
-      '/tmp/mnt/instacart/bronze/aisles',
-      header=True,
-      schema=aisles_schema
-      )
+  .read
+  .csv(
+    '/tmp/mnt/instacart/bronze/aisles',
+    header=True,
+    schema=aisles_schema
   )
+)
 
 # Deltaに書き出す(Deltaフォーマットとしてストレージに書き込む)
 (
@@ -358,16 +358,16 @@ user_product_orders = (
   .join(spark.table('instacart.order_products'), on='order_id')
   .groupBy('user_id', 'product_id', 'split')
   .agg( count(lit(1)).alias('purchases') )
-  )
+)
 
 # Deltaで保存する(ストレージに書き出す)
 (
   user_product_orders
-    .write
-    .format('delta')
-    .mode('overwrite')
-    .save('/tmp/mnt/instacart/gold/ratings__user_product_orders')
-  )
+  .write
+  .format('delta')
+  .mode('overwrite')
+  .save('/tmp/mnt/instacart/gold/ratings__user_product_orders')
+)
 
 # 書き込んだ結果を結果をテーブル参照する
 display(
