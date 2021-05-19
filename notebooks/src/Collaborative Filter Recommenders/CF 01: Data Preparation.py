@@ -45,25 +45,25 @@ import shutil
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Database
+# DBTITLE 1,databaseを作成する
 _ = spark.sql('CREATE DATABASE IF NOT EXISTS instacart')
 
 # COMMAND ----------
 
-# MAGIC %md #IMPORTANT
+# MAGIC %md #重要
 # MAGIC 
-# MAGIC **NOTE** The orders data set is pre-split into *prior* and *training* datasets.  Because date information in this dataset is very limited, we'll need to work with these pre-defined splits.  We'll treat the *prior* dataset as our ***calibration*** dataset and we'll treat the *training* dataset as our ***evaluation*** dataset. To minimize confusion, we'll rename these as part of our data preparation steps.
+# MAGIC **注意** 受注データセットは、あらかじめ*prior*と*training*のデータセットに分割されています。 このデータセットの日付情報は非常に限られているので、あらかじめ定義された分割を使って作業する必要があります。 ここでは、*prior*データセットを***calibration***データセットとし、*training*データセットを***evaluation***データセットとします。混乱を避けるため、データ準備の段階でデータの名前を変更しておきます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Orders
-# delete the old table if needed
+# DBTITLE 1,Orders (注文テーブル)
+# 古いテーブルがあれば削除する
 _ = spark.sql('DROP TABLE IF EXISTS instacart.orders')
 
-# drop any old delta lake files that might have been created
+# 同様に、古いDeltaファイルがあれば削除する
 shutil.rmtree('/dbfs/mnt/instacart/silver/orders', ignore_errors=True)
 
-# define schema for incoming data
+# 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 orders_schema = StructType([
   StructField('order_id', IntegerType()),
   StructField('user_id', IntegerType()),
@@ -74,7 +74,7 @@ orders_schema = StructType([
   StructField('days_since_prior_order', FloatType())
   ])
 
-# read data from csv
+# CSVファイルからデータを読み込む
 orders = (
   spark
     .read
@@ -85,14 +85,14 @@ orders = (
       )
   )
 
-# rename eval_set entries
+# "eval_set" エントリーの名前を変更
 orders_transformed = (
   orders
     .withColumn('split', expr("CASE eval_set WHEN 'prior' THEN 'calibration' WHEN 'train' THEN 'evaluation' ELSE NULL END"))
     .drop('eval_set')
   )
 
-# write data to delta
+# Deltaに書き出す(Deltaフォーマットとしてストレージに書き込む)
 (
   orders_transformed
     .write
@@ -101,28 +101,28 @@ orders_transformed = (
     .save('/mnt/instacart/silver/orders')
   )
 
-# make accessible as spark sql table
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.orders
   USING DELTA
   LOCATION '/mnt/instacart/silver/orders'
   ''')
 
-# present the data for review
+# 準備したデータを確認する
 display(
   spark.table('instacart.orders')
   )
 
 # COMMAND ----------
 
-# DBTITLE 1,Products
-# delete the old table if needed
+# DBTITLE 1,Products (製品テーブル)
+# 古いテーブルがあれば削除する
 _ = spark.sql('DROP TABLE IF EXISTS instacart.products')
 
-# drop any old delta lake files that might have been created
+# 同様に、古いDeltaファイルがあれば削除する
 shutil.rmtree('/dbfs/mnt/instacart/silver/products', ignore_errors=True)
 
-# define schema for incoming data
+# 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 products_schema = StructType([
   StructField('product_id', IntegerType()),
   StructField('product_name', StringType()),
@@ -130,7 +130,7 @@ products_schema = StructType([
   StructField('department_id', IntegerType())
   ])
 
-# read data from csv
+# CSVファイルからデータを読み込む
 products = (
   spark
     .read
@@ -141,7 +141,7 @@ products = (
       )
   )
 
-# write data to delta
+# Deltaに書き出す(Deltaフォーマットとしてストレージに書き込む)
 (
   products
     .write
@@ -150,22 +150,22 @@ products = (
     .save('/mnt/instacart/silver/products')
   )
 
-# make accessible as spark sql table
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.products
   USING DELTA
   LOCATION '/mnt/instacart/silver/products'
   ''')
 
-# present the data for review
+# 準備したデータを確認する
 display(
   spark.table('instacart.products')
   )
 
 # COMMAND ----------
 
-# DBTITLE 1,Order Products
-# delete the old table if needed
+# DBTITLE 1,Order Products (製品注文テーブル)
+# 古いテーブルがあれば削除する
 _ = spark.sql('DROP TABLE IF EXISTS instacart.order_products')
 
 # drop any old delta lake files that might have been created
