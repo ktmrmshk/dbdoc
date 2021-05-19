@@ -238,7 +238,7 @@ print("ML Pipeline accuracy: %s" % lr_summary.accuracy)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### NotebookのサイドバーにからMLflowでトラックした学習結果(Experiment/Runs)をかくする
+# MAGIC ### NotebookのサイドバーにからMLflowでトラックした学習結果(Experiment/Runs)を確認する
 # MAGIC 
 # MAGIC 上記のモデル学習コードでは、MLflow実行時に自動的にメトリクスやパラメータが記録され、[MLflow Runs Sidebar](https://databricks.com/blog/2019/04/30/introducing-mlflow-run-sidebar-in-databricks-notebooks.html)で確認することができます。右上の「Experiment」をクリックすると、「Experiment Runs」サイドバーが表示されます。
 
