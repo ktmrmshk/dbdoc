@@ -44,20 +44,23 @@ import math
 
 # COMMAND ----------
 
-# MAGIC %md To assemble a user-based recommender, we need to compare each of our roughly 200,000 users to one another. Simplistically, that equates to about 40-billion comparisons (200,000 \* 200,000).  If we consider that a comparison between user A and user B should return the same result as a comparison between user B and user A, then we can halve that number.  And if we consider that a comparison between user A and his- or herself will result in a constant, we can reduce the number of comparisons required a little further, though still about 20-billion \[(200,000 \* (200,000 - 1)) / 2\].  
+# MAGIC %md 
 # MAGIC 
-# MAGIC For each user-pair, we need to compare the implicit ratings associated with each product.  In this dataset, that's about 50,000 product-level comparisons that must be performed for each user-comparison:
+# MAGIC ユーザーベースのレコメンデーションを構築するためには、約20万人のユーザーをそれぞれ比較する必要があります。単純に考えると、これは約400億回の比較に相当します（200,000 * 200,000）。 ユーザーAとユーザーBの比較は、ユーザーBとユーザーAの比較と同じ結果を返すべきだと考えれば、この数字を半分にすることができます。 また、ユーザーAと自分との比較が一定の結果になると考えれば、必要な比較の数をもう少し減らすことができますが、それでも約200億回の比較が必要です。 
+# MAGIC 
+# MAGIC ユーザーペアごとに、各製品に関連する暗黙の評価を比較する必要があります。 このデータセットでは、各ユーザーペアに対して、約50,000件の製品レベルの比較を行う必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Products Evaluated with Each User Comparison
+# DBTITLE 1,各ユーザーkann比較で評価された製品
 # MAGIC %sql 
 # MAGIC 
 # MAGIC SELECT 'products', COUNT(DISTINCT product_id) FROM instacart.products
 
 # COMMAND ----------
 
-# MAGIC %md But most customers only buy a small number of products.  Of the potential 10-billion (200,000 \* 50,000) user-product associations possible, we only observe about 14-million within the dataset:
+# MAGIC %md
+# MAGIC しかし、ほとんどのお客様は、わずかな種類の製品しか購入しません。 ユーザーと製品の関連性は100億通りあると言われていますが、データセットでは約1400万通りしか観測されていません。
 
 # COMMAND ----------
 
@@ -72,7 +75,9 @@ import math
 
 # COMMAND ----------
 
-# MAGIC %md All of this is to say that we will need to be mindful of how we might efficiently perform our user-to-user comparisons to avoid unnecessary overhead and effort.
+# MAGIC %md 
+# MAGIC 
+# MAGIC 不必要なオーバーヘッドを避けるために、ユーザー間の比較をどのように効率的に行うかを考える必要があるということです。
 
 # COMMAND ----------
 
