@@ -28,7 +28,6 @@ import shutil
 # MAGIC 
 # MAGIC **注意** データの提供条件により、この作品を再現するには、Kaggleからデータファイルをダウンロードし、以下のようなフォルダ構造にアップロードする必要があります。
 # MAGIC 
-# MAGIC The primary data files available for download are organized as follows under a pre-defined [mount point](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs) that we have named */mnt/instacart*:
 # MAGIC 
 # MAGIC ダウンロードしたデータファイルは以下のようにストレージ上(`/mnt/instacart`配下)に配置されているとします。
 # MAGIC 
@@ -168,10 +167,10 @@ display(
 # 古いテーブルがあれば削除する
 _ = spark.sql('DROP TABLE IF EXISTS instacart.order_products')
 
-# drop any old delta lake files that might have been created
+# 同様に、古いDeltaファイルがあれば削除する
 shutil.rmtree('/dbfs/mnt/instacart/silver/order_products', ignore_errors=True)
 
-# define schema for incoming data
+# 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 order_products_schema = StructType([
   StructField('order_id', IntegerType()),
   StructField('product_id', IntegerType()),
@@ -179,7 +178,7 @@ order_products_schema = StructType([
   StructField('reordered', IntegerType())
   ])
 
-# read data from csv
+# CSVファイルからデータを読み込む
 order_products = (
   spark
     .read
@@ -190,7 +189,7 @@ order_products = (
       )
   )
 
-# write data to delta
+# Deltaに書き出す(Deltaフォーマットとしてストレージに書き込む)
 (
   order_products
     .write
@@ -199,34 +198,34 @@ order_products = (
     .save('/mnt/instacart/silver/order_products')
   )
 
-# make accessible as spark sql table
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.order_products
   USING DELTA
   LOCATION '/mnt/instacart/silver/order_products'
   ''')
 
-# present the data for review
+# 準備したデータを確認する
 display(
   spark.table('instacart.order_products')
   )
 
 # COMMAND ----------
 
-# DBTITLE 1,Departments
-# delete the old table if needed
+# DBTITLE 1,Departments (部署テーブル)
+# 古いテーブルがあれば削除する
 _ = spark.sql('DROP TABLE IF EXISTS instacart.departments')
 
-# drop any old delta lake files that might have been created
+# 同様に、古いDeltaファイルがあれば削除する
 shutil.rmtree('/dbfs/mnt/instacart/silver/departments', ignore_errors=True)
 
-# define schema for incoming data
+# 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 departments_schema = StructType([
   StructField('department_id', IntegerType()),
   StructField('department', StringType())  
   ])
 
-# read data from csv
+# CSVファイルからデータを読み込む
 departments = (
   spark
     .read
@@ -237,7 +236,7 @@ departments = (
       )
   )
 
-# write data to delta
+# Deltaに書き出す(Deltaフォーマットとしてストレージに書き込む)
 (
   departments
     .write
@@ -246,34 +245,34 @@ departments = (
     .save('/mnt/instacart/silver/departments')
   )
 
-# make accessible as spark sql table
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.departments
   USING DELTA
   LOCATION '/mnt/instacart/silver/departments'
   ''')
 
-# present the data for review
+# 準備したデータを確認する
 display(
   spark.table('instacart.departments')
   )
 
 # COMMAND ----------
 
-# DBTITLE 1,Aisles
-# delete the old table if needed
+# DBTITLE 1,Aisles (通路テーブル)
+# 古いテーブルがあれば削除する
 _ = spark.sql('DROP TABLE IF EXISTS instacart.aisles')
 
-# drop any old delta lake files that might have been created
+# 同様に、古いDeltaファイルがあれば削除する
 shutil.rmtree('/dbfs/mnt/instacart/silver/aisles', ignore_errors=True)
 
-# define schema for incoming data
+# 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 aisles_schema = StructType([
   StructField('aisle_id', IntegerType()),
   StructField('aisle', StringType())  
   ])
 
-# read data from csv
+# CSVファイルからデータを読み込む
 aisles = (
   spark
     .read
@@ -284,7 +283,7 @@ aisles = (
       )
   )
 
-# write data to delta
+# Deltaに書き出す(Deltaフォーマットとしてストレージに書き込む)
 (
   aisles
     .write
@@ -293,39 +292,39 @@ aisles = (
     .save('/mnt/instacart/silver/aisles')
   )
 
-# make accessible as spark sql table
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 _ = spark.sql('''
   CREATE TABLE instacart.aisles
   USING DELTA
   LOCATION '/mnt/instacart/silver/aisles'
   ''')
 
-# present the data for review
+# 準備したデータを確認する
 display(
   spark.table('instacart.aisles')
   )
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Derive Product *Ratings*
+# MAGIC %md # Step 2: 製品の *評価(Ratings)* を導き出す
 # MAGIC 
-# MAGIC For our collaborative filter (CF), we need a way to understand user preferences for individual products. In some scenarios, explicit user ratings, such as a 3 out of 5 stars rating, may be provided, but not every interaction receives a rating and in many transactional engagements the idea of asking customers for such ratings just seems out of place. In these scenarios, we might use other user-generated data to indicate product preferences. In the context of the Instacart dataset, the frequency of product purchases by a user may serve as such an indicator:
+# MAGIC 協調フィルタ（Collaborative Filter, CF）では、個々の製品に対するユーザーの好みを把握するための情報が必要になります。シナリオによっては、5つ星のうち3つ星のような明示的なユーザー評価が提供されることもあります。しかし、すべてのインタラクションに評価が付くわけではありません。また、多くのトランザクショナル・エンゲージメントでは、顧客にそのような評価を求めることができない場合が一般的です。このようなシナリオでは、製品の好みを示すために、他のユーザー生成データを使用することがあります。Instacartのデータセットの文脈では、ユーザーによる製品購入の頻度がそのような指標となるかもしれません。
 
 # COMMAND ----------
 
-# drop any old delta lake files that might have been created
+# 古いDeltaファイルがあれば削除する
 shutil.rmtree('/dbfs/mnt/instacart/gold/ratings__user_product_orders', ignore_errors=True)
 
-# identify number of times product purchased by user
+# ユーザーごとに購入した回数を算出する
 user_product_orders = (
   spark
-    .table('instacart.orders')
-    .join(spark.table('instacart.order_products'), on='order_id')
-    .groupBy('user_id', 'product_id', 'split')
-    .agg( count(lit(1)).alias('purchases') )
+  .table('instacart.orders') # テーブルデータを読み込んでDataFrameとして返す
+  .join(spark.table('instacart.order_products'), on='order_id')
+  .groupBy('user_id', 'product_id', 'split')
+  .agg( count(lit(1)).alias('purchases') )
   )
 
-# write data to delta
+# Deltaで保存する(ストレージに書き出す)
 (
   user_product_orders
     .write
@@ -334,7 +333,7 @@ user_product_orders = (
     .save('/mnt/instacart/gold/ratings__user_product_orders')
   )
 
-# display results
+# 書き込んだ結果を結果をテーブル参照する
 display(
   spark.sql('''
     SELECT * 
@@ -345,19 +344,22 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Using product purchases as *implied ratings* presents us with a scaling problem.  Consider a scenario where a user purchases a given product 10 times while another user purchases a product 20 times.  Does the first user have a stronger preference for the product?  What if we new the first customer has made 10 purchases in total so that this product was included in each checkout event while the second user had made 50 total purchases, only 20 of which included the product of interest?  Does our understanding of the users preferences change in light of this additional information?
+# MAGIC %md 
 # MAGIC 
-# MAGIC Rescaling our data to account for differences in overall purchase frequency will provide us a more reliable basis for the comparison of users. There are several options for doing this, but because of how we intend to measure the similarity between users (to provide the basis of collaborative filtering), our preference will be to use what is referred to as L2-normalization.
+# MAGIC 製品購入を「推定評価値(暗黙の評価値)」として使用する場合、スケーリングの問題があります。 あるユーザーがある製品を10回購入し、別のユーザーが20回購入したとします。最初のユーザーは、その製品に対してより強い嗜好を持っているでしょうか？ もし、最初のユーザーが合計10回購入し、各チェックアウトイベントにその商品が含まれていたのに対し、2番目のユーザーは合計50回購入し、そのうち20回しか対象商品が含まれていなかったとしたらどうでしょうか？ この追加情報を踏まえて、ユーザーの好みについての理解・確度は変化するのでしょうか?
 # MAGIC 
-# MAGIC To understand L2-normalization, consider two users who have purchased products X and Y. The first user has purchased product X 10 times and product Y 5 times. The second user has purchased products X and Y 20 times each.  We might plot these purchases (with product X on the x-axis and product Y on the y-axis) as follows:
+# MAGIC 
+# MAGIC 購入頻度の違いを考慮してデータを再スケーリングすることで、より信頼性の高いユーザーの比較が可能になります。この方法にはいくつかのオプションがありますが、ユーザー間の類似性を測定する方法（協調フィルタリングの基礎となる）を考慮して、L2正規化と呼ばれる方法を使用してみましょう。
+# MAGIC 
+# MAGIC L2正規化を理解するために、製品XとYを購入した2人のユーザーを考えてみましょう。1人目のユーザーは、製品Xを10回、製品Yを5回購入しています。2番目のユーザーは、製品XとYをそれぞれ20回購入しています。 これらの購入を（x軸に製品X、y軸に製品Yを置いて）次のようにプロットすることができます。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_norm01.png' width=380>
 # MAGIC 
-# MAGIC To determine similarity, we'll be measuring the (Euclidean) distance between the points formed at the intersection of these two axes, *i.e.* the peak of the two triangles in the graphic.  Without rescaling, the first user resides about 11 units from the origin and the second user resides about 28 units.  Calculating the distance between these two users in this space would provide a measure of both differing product preferences AND purchase frequencies. Rescaling the distance each user resides from the origin of the space eliminates the differences related to purchase frequencies, allowing us to focus on differences in product preferences:
+# MAGIC 似ているかどうかを判断するには、この2つの軸の交点、つまり図中の2つの三角形の頂点の間の（ユークリッド）距離を測定します。 リスケールしない場合、1人目のユーザーは原点から約11ユニット、2人目のユーザーは約28ユニットの位置にいることになります。 この空間における2人のユーザー間の距離を計算すると、製品の好みや購入頻度の違いを測ることができます。空間の原点からの各ユーザーの距離を再スケーリングすることで、購入頻度に関する違いがなくなり、製品の好みの違いに焦点を当てることができます。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_norm02.png' width=400>
 # MAGIC 
-# MAGIC The rescaling is achieved by calculating the Euclidean distance between each user and the origin - there's no need to limit ourselves to two-dimensions for this math to work - and then dividing each product-specific value for that user by this distance which is referred to as the L2-norm.  Here, we apply the L2-norm to our implied ratings:
+# MAGIC 再スケーリングは、各ユーザーと原点との間のユークリッド距離を計算し（この計算には2次元に限定する必要はありません）、そのユーザーの各製品固有の値を、L2ノルムと呼ばれるこの距離で割ることで達成されます。 ここでは、L2ノルムを推定評価値(暗黙の評価値、implied ratings)に適用します。
 
 # COMMAND ----------
 
@@ -399,15 +401,21 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md You may have noted that we elected to implement these calculations through a view.  If we consider the values for a user must be recalculated with each purchase event by that user as that event will impact the value of the L2-norm by which each implied rating is adjusted. Persisting raw purchase counts in our base *ratings* table provides us an easy way to incrementally add new information to this table without having to re-traverse a user's entire purchase history.  Aggregating and normalizing the values in that table on the fly through a view gives us an easy way to extract normalized data with less ETL effort.
+# MAGIC %md 
 # MAGIC 
-# MAGIC It's important to consider which data is included in these calculations. Depending on your scenario, it might be appropriate to limit the transaction history from which these *implied ratings* are derived to a period within which expressed preferences would be consistent with the user's preferences in the period over which the recommender might be used.  In some scenarios, this may mean limiting historical data to a month, quarter, year, etc.  In other scenarios, this may mean limiting historical data to periods with comparable seasonal components as the current or impending period.  For example, a user may have a strong preference for pumpkin spice flavored products in the Fall but may not be really keen on it during the Summer months.  For demonstration purposes, we'll just use the whole transaction history as the basis of our ratings but this is a point you'd want to carefully consider for a real-world implementation.
+# MAGIC 
+# MAGIC これらの計算を(結果を新しい`table`で作成するのではなく)`view`で実装した点について、疑問に思われたかもしれません。ユーザーの値は、そのユーザーの購入イベントごとに再計算する必要があります。なぜなら、そのイベントは、それぞれの「暗黙評価値」を調整するL2ノルムの値に影響を与えるからです。基本となる *ratings* テーブルに生の購入数を保持することで、ユーザーの全購入履歴を辿ることなく、このテーブルに新しい情報を段階的に追加することができます。 そのテーブルの値をビューで集約して正規化することで、少ないETL作業で正規化されたデータを簡単に抽出することができます。
+# MAGIC 
+# MAGIC 
+# MAGIC これらの計算にどのデータを含めるかを検討することが重要です。お客様のシナリオによっては、これらの *推定評価値* の元となる取引履歴を、表明された好みがレコメンダーが使用される期間におけるユーザーの好みと一致する期間に限定することが適切な場合があります。 あるシナリオでは、これは履歴データを月、四半期、年などに限定することを意味します。 他のシナリオでは、これは、現在または差し迫った期間と同等の季節成分を持つ期間に過去のデータを制限することを意味する場合がある。 例えば、あるユーザーは、秋にはパンプキンスパイスフレーバーの製品を強く好むが、夏の間はあまり好まないかもしれません。 デモのために、ここでは取引履歴全体を評価の基礎として使用しますが、実際の実装ではこの点を慎重に検討する必要があります。
 
 # COMMAND ----------
 
 # MAGIC %md # Step 3: Derive Naive Product *Ratings*
 # MAGIC 
 # MAGIC A common practice when evaluating a recommender is to compare it to a prior or alternative recommendation engine to see which better helps the organization achieve its goals. To provide us a starting point for such comparisons, we might consider using overall product popularity as the basis for making *naive* collaborative recommendations. Here, we calculate normalized product ratings based on overall purchase frequencies to enable this work:
+# MAGIC 
+# MAGIC レコメンダーを評価する際の一般的な方法は、先行するレコメンダーや代替のレコメンダーと比較して、どちらが組織の目標達成に役立つかを確認することである。このような比較を行うための出発点として、製品全体の人気度を、*naive* 協調推薦の基底として使用することを検討しましょう。ここでは、この作業を可能にするために、全体的な購入頻度に基づいて正規化された製品評価を計算します。
 
 # COMMAND ----------
 
