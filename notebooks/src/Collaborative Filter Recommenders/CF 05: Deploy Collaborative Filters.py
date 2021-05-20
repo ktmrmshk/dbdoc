@@ -3,17 +3,22 @@
 
 # COMMAND ----------
 
-# MAGIC %md # Introduction 
-# MAGIC 
-# MAGIC The deployment pattern for any recommender is specific to the volumes and volatility of the data on which they are based. The specific business scenarios enabled with the recommenders also affect how you should implement the recommendation platform. In this notebook, we'll explore the mechanics of deploying both user-based and item-based collaborative filters in a manner we believe aligns with some common scenarios but in no way are we suggesting you should deploy a user-based or item-based recommender exactly as demonstrated here.  You are strongly encouraged to discuss the deployment of any recommender system with the developers and architects responsible for the applications that will use the recommendations and, just as importantly, the business stakeholders responsible for the outcomes they are to drive.  With that in mind, let's take a quick look at the deployment pattern explored in this notebook:
-# MAGIC 
-# MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_pipeline.png" width="700">
-# MAGIC 
-# MAGIC With this deployment pattern, we envision a daily, weekly or even monthly process responsible for the generation of user- and/or product-pairs.  These pairs along with ratings data and product data may then be replicated to a relational database (or other data store) where tuned queries are then used to produce the recommendations presented in an application. 
+# MAGIC %md
+# MAGIC # 協調フィルタリングのデプロイ
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# MAGIC %md # イントロダクション
+# MAGIC 
+# MAGIC どのレコメンダーも、そのベースとなるデータのボリュームやボラティリティに応じて、導入パターンが決まっています。また、レコメンダーで実現する特定のビジネスシナリオは、レコメンデーション・プラットフォームの実装方法にも影響します。このノートブックでは、一般的なシナリオに沿った方法で、ユーザーベースおよびアイテムベースの協調フィルタを展開する仕組みを探っていきますが、決してここで示した通りにユーザーベースまたはアイテムベースのレコメンダーを展開すべきだと提案しているわけではありません。 レコメンデーションシステムを導入する際には、レコメンデーションを使用するアプリケーションの開発者やアーキテクト、そして同様に重要な、レコメンデーションがもたらす成果に責任を持つビジネスステークホルダーと話し合うことを強くお勧めします。 このことを念頭に置いて、このノートブックで検討した展開パターンを簡単に見てみましょう。
+# MAGIC 
+# MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_pipeline.png" width="700">
+# MAGIC 
+# MAGIC この展開パターンでは、毎日、毎週、あるいは毎月、ユーザーや商品のペアを生成するプロセスを想定しています。 これらのペアは、評価データや商品データとともに、リレーショナルデータベース（またはその他のデータストア）に複製され、調整されたクエリを使用してアプリケーションで提示される推奨事項を生成します。
+
+# COMMAND ----------
+
+# DBTITLE 1,必要なライブラリのimport
 from pyspark import keyword_only
 from pyspark.ml.util import DefaultParamsReadable, DefaultParamsWritable  
 from pyspark.ml import Transformer, Pipeline
@@ -37,11 +42,11 @@ import shutil
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1a: Assemble User-Pairs
+# MAGIC %md # Step 1a: ユーザーペアを構成
 # MAGIC 
-# MAGIC Our first step in generating user-based collaborative filter recommendations is to assemble ratings vectors for each user and assign each vector to an LSH bucket.  In many solutions, such steps would be organized as a [pipeline](https://spark.apache.org/docs/latest/ml-pipeline.html) but in the batch scenario we envision here, it may be easier to maintain the code within a script or notebook. (For an example of how pipelines may be employed with LSH, please see the final content-based recommender notebook.)
+# MAGIC ユーザーベースの協調フィルタ推薦を生成するための最初のステップは、各ユーザーの評価ベクトルを収集し、各ベクトルをLSHバケットに割り当てることです。 多くのソリューションでは、このようなステップは[パイプライン](https://spark.apache.org/docs/latest/ml-pipeline.html)として構成されますが、ここで想定しているバッチシナリオでは、スクリプトやノートブック内でコードを維持する方が簡単かもしれません。(LSHにパイプラインを採用する例として、最終的なコンテンツベースレコメンダーのノートブックを参照してください)
 # MAGIC 
-# MAGIC To get us started, we'll need to retrieve details on the users that will be part of our solution. Here we are leveraging the full set of user data from our calibration period.  In a real world implementation, this set may be constrained using data from one or more prior periods that take into consideration seasonal variations in buying patterns and which are relevant to the future period over which we intent to make recommendations:
+# MAGIC まず始めに、ソリューションの対象となるユーザーの詳細を取得する必要があります。ここでは、校正期間中のユーザーデータをすべて活用しています。 実際には、購買パターンの季節的変動を考慮し、推奨を行う将来の期間に関連する1つ以上の過去の期間のデータを使用して、このデータセットを制限することができます。
 
 # COMMAND ----------
 
@@ -118,9 +123,11 @@ shutil.rmtree('/dbfs/mnt/instacart/tmp/user_features', ignore_errors=True)
 
 # COMMAND ----------
 
-# MAGIC %md The last step in the prior cell persists our LSH-bucketed data to disk.  This will provide us a consistent basis for restarting the next set of long-running steps should a problem be encountered during their execution.
+# MAGIC %md 
 # MAGIC 
-# MAGIC In our next step, we'll use the *approxSimiliarityJoin()* to return users within a particular distance of a subset of our user population. We'll set the threshold fairly high to ensure we return a large number of users but then limit the users we move forward with the to 10 most similar users (plus the target user him- or herself) to emulate what we might receive from performing a nearest neighbor query.  The reason we are approaching the data retrieval problem in this manner as opposed to using the *approxNearnestNeighbor()* method explored in prior notebooks is that the similarity join is built for the retreival of data for multiple users (as opposed to single user retrieval with the nearest neighbors technique), making this approach significantly faster:
+# MAGIC 前のセルの最後のステップでは、LSHでバケットされたデータをディスクに保存します。 これにより、長時間実行される次のステップの実行中に問題が発生した場合に、再起動するための一貫した基準を得ることができます。
+# MAGIC 
+# MAGIC 次のステップでは、`approxSimiliarityJoin()`を使用して、ユーザー集団のサブセットから特定の距離にいるユーザーを返します。閾値をかなり高く設定して多数のユーザを返すようにしますが、直近のクエリを実行して得られる結果を模して、最も類似した10人のユーザ（およびターゲット・ユーザ自身）に限定します。 データ検索の問題を、以前のノートブックで検討した`approxNearnestNeighbor()`メソッドではなく、この方法でアプローチしている理由は、類似性結合が複数のユーザーのデータを検索するために構築されているためであり（最近のネイバーズテクニックによる単一ユーザーの検索とは対照的です）、このアプローチは非常に高速です。
 
 # COMMAND ----------
 
@@ -225,11 +232,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1b: Assemble Product-Pairs
+# MAGIC %md # Step 1b: 製品ペアを構成する
 # MAGIC 
-# MAGIC Our first step in building an item-based collaborative filter is to assemble the product pairs for the prior relevant period.  Unlike the generation of user-pairs, we are not using any bucketing techniques and instead will perform a brute-force generation of pairs actually observed in the data.  To limit the number of calculations performed, we'll perform a non-redundant comparison of product A to product B and then simply insert the inverted product B to product A comparison along with the self-comparison, *i.e.* product A to product A, data into the output table. This pattern was explored in the last notebook.
+# MAGIC アイテムベースの協調フィルタを構築するための最初のステップは、過去の関連期間の製品ペアを組み立てることです。 ユーザーペアの生成とは異なり、バケット化技術は使用せず、代わりにデータで実際に観察されたペアのブルートフォース生成を行います。 実行される計算の数を制限するために、製品Aと製品Bの非冗長な比較を実行し、自己比較、*すなわち*製品Aと製品Aの比較データとともに、反転した製品Bと製品Aの比較を出力テーブルに単純に挿入します。このパターンは前回のノートでも検討しました。
 # MAGIC 
-# MAGIC It's important to note that unlike the last notebook, we are implementing a filter to eliminate product pairs associated with fewer than 6 users.  In the last notebook, the filter was implemented during the generation of the recommendations to allow us to explore the ideal setting for our dataset.  Here, we are moving the filter further up into the data processing pipeline to reduce the both data processing and query times:
+# MAGIC 前回のノートとは異なり、6人未満のユーザーに関連する製品ペアを排除するためのフィルターを実装していることに注目してください。 前作では、データセットの理想的な設定を検討するために、レコメンデーションの生成時にフィルターを実装しました。 今回は、データ処理とクエリの時間を短縮するために、フィルターをデータ処理パイプラインのさらに上流に移動させています。
 
 # COMMAND ----------
 
@@ -392,23 +399,24 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2a: Generate User-Based Recommendations
+# MAGIC %md # Step 2a: ユーザーベースのレコメンデーションを構築する
 # MAGIC 
-# MAGIC With our user-pairs assembled, we now turn generation of the actual recommendations.  Speed of retrieval is important in most recommendation scenarios.  At the same time, we need to consider how many of the users in our data set are likely to engage the recommendation engine while these data are active. When the number of users who will engage the recommendations is low relative to the total number of users in our dataset, we might consider dynamically generating (and possibly then caching for later reuse) those recommendations.
+# MAGIC ユーザーペアが揃ったところで、次は実際のレコメンデーションの生成に入ります。 ほとんどの推薦シナリオでは、検索の速さが重要です。 同時に、データセット内のユーザーのうち何人が、データがアクティブである間にレコメンデーションエンジンを利用する可能性があるかを考慮する必要があります。レコメンデーションを利用するユーザーの数がデータセット内のユーザー総数に比べて少ない場合、レコメンデーションを動的に生成する（そしておそらく後で再利用するためにキャッシュする）ことを検討することができます。
 # MAGIC 
-# MAGIC To dynamically generate recommendations, we might consider employing a relational database engine.  Partitioning and indexing strategies available those technologies may be employed to ensure high query-performance SLAs are met.  Denormalizing some of the data may also help in ensuring consistent retrieval speeds. 
+# MAGIC レコメンデーションを動的に生成するためには、リレーショナル・データベース・エンジンの採用が考えられます。 高いクエリー・パフォーマンスのSLAを満たすために、これらの技術で利用可能なパーティショニングやインデックス戦略を採用することができます。 また、データの一部を非正規化することで、一貫した検索速度を確保することができます。
 # MAGIC 
-# MAGIC We will not be demonstrating how to publish data to specific RDMBSs in this notebook as this will increase the number of dependencies for running this code.  Information and code-samples for publishing data to popular RDMBSs can be found through the following links:</p>
+# MAGIC 
+# MAGIC このコードを実行するための依存関係が増えるため、このノートブックでは特定のRDMBSにデータをパブリッシュする方法を説明しません。 一般的なRDMBSへのデータ公開に関する情報やコードサンプルは、以下のリンクから入手できます。</p>
 # MAGIC 
 # MAGIC * [Azure SQL Server](https://docs.microsoft.com/en-us/sql/connect/spark/connector?view=sql-server-ver15) 
 # MAGIC * [AWS RDS & other JDBC or ODBC-supported RDMBSs](https://docs.databricks.com/data/data-sources/sql-databases.html)
 # MAGIC 
-# MAGIC For this notebook, we will instead perform queries against Delta Lake-enabled tables.  The primary tables we'll employ are:</p>
+# MAGIC このノートでは、代わりにDelta Lake対応のテーブルに対してクエリを実行します。 採用する主なテーブルは以下の通りです。</p>
 # MAGIC 1. User-Pairs
 # MAGIC 2. User-Ratings
 # MAGIC 3. Products
 # MAGIC 
-# MAGIC We'll bring the data in these tables as follows:
+# MAGIC これらのテーブルのデータを以下のようにして持ってきます。
 
 # COMMAND ----------
 
@@ -474,7 +482,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md  Query performance is not ideal, but again, our focus here is on logic, not performance.  To obtain the needed performance, the base tables for this query are best replicated to an RDBMS and indexed for faster access.
+# MAGIC %md
+# MAGIC 
+# MAGIC クエリのパフォーマンスは理想的ではありませんが、ここではパフォーマンスではなくロジックに重点を置いています。 必要なパフォーマンスを得るためには、このクエリのベースとなるテーブルをRDBMSに複製し、インデックスを作成してアクセスを高速化するのが最適です。
 
 # COMMAND ----------
 
@@ -485,15 +495,15 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2b: Generate Item-Based Recommendations
+# MAGIC %md # Step 2b: アイテムベースのレコメンデーションを構築する
 # MAGIC 
-# MAGIC As with the user-based recommendations, we would typically publish several of our base tables to an RDMBS to enable the dynamic generation of recommendations.  The tables requires for this are:</p>
+# MAGIC ユーザーベースのレコメンデーションと同様に、レコメンデーションのダイナミックな生成を可能にするために、通常、いくつかの基本テーブルをRDMBSに公開します。 このために必要なテーブルは</p>
 # MAGIC 
 # MAGIC 1. Product-Pairs
 # MAGIC 2. User-Ratings
 # MAGIC 3. Products
 # MAGIC 
-# MAGIC Using these tables, we might construct a generic view to encapsulate our recommendation generation logic as follows:
+# MAGIC これらのテーブルを使用して、推薦生成ロジックをカプセル化するための汎用ビューを以下のように構築することができます。
 
 # COMMAND ----------
 
@@ -554,4 +564,6 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Again, performance is achieved by replicating these objects to an RDBMS.  The query here simply shows us the means by which these data are dynamically assembled to form our recommendations.
+# MAGIC %md
+# MAGIC 
+# MAGIC ここでも、これらのオブジェクトをRDBMSに複製することで、パフォーマンスを実現しています。 ここでのクエリは、これらのデータが動的に組み合わされて推奨事項を形成する手段を示しているに過ぎません。
