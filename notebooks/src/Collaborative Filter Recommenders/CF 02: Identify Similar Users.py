@@ -1,16 +1,21 @@
 # Databricks notebook source
 # MAGIC %md 
+# MAGIC # Chapter2: 類似ユーザーを特定する
+
+# COMMAND ----------
+
+# MAGIC %md 
 # MAGIC このノートブックの目的は、ユーザーベースの協調フィルタの構築に向けて、類似したユーザーを効率的に特定する方法を探ることです。このノートブックは、**Databricks 7.1+ クラスタ**で動作するように設計されています。 
 
 # COMMAND ----------
 
 # MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC 協調フィルタは，現代のレコメンデーション体験を実現する重要な要素です．「***あなたに似たお客様はこんなものも買っています***」というタイプのレコメンデーションは、興味を引く可能性の高い商品を特定し、購入商品の幅を広げたり、お客様のショッピングカートをより早く満たすための重要な手段となります。
+# MAGIC 協調フィルタは，現代のレコメンデーション体験を実現する重要な要素です．「***あなたに似たお客様はこんなものも買っています***」というタイプのレコメンデーションは、興味を引く可能性の高い商品を特定し、購入商品の幅を広げたり、お客様のショッピングカートをより早く多くの商品で満たしてもらうための重要な手段となります。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_collabrecom.png" width="600">
 # MAGIC 
-# MAGIC この種のレコメンダーを構築するために必要なトランザクションデータが揃ったところで、この種のフィルターの背後にある中核的なメカニズムに目を向けてみましょう。これは、製品購入のパターンが似ている顧客を特定することが中心となります。
+# MAGIC レコメンダーを構築するために必要なトランザクションデータが揃ったところで、このタイプのフィルターの背後にあるメカニズムに目を向けてみましょう。製品購入のパターンが似ている顧客を特定することが問題の中心となります。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_userbasedcollab.gif" width="300">
 
@@ -33,11 +38,11 @@ import math
 
 # MAGIC %md # Step 1:  評価データセット(ratings dataset)の探索
 # MAGIC 
-# MAGIC ユーザーベースの協調フィルタ（CF）の生成に入る前に、まずデータセットの概要を把握するために、「おすすめ」を提示する必要がある顧客の数を考えてみましょう。
+# MAGIC ユーザーベースの協調フィルタ（CF）の生成に入る前に、まずデータセットの概要を把握するために、レコメンデーションの対象になる顧客の数を考えてみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,レコメンドを必要とする顧客
+# DBTITLE 1,レコメンドの対象の顧客数(ユーザー数)
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT 'users' as entity, COUNT(DISTINCT user_id) as instances FROM instacart.user_ratings
@@ -46,13 +51,13 @@ import math
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC ユーザーベースのレコメンデーションを構築するためには、約20万人のユーザーをそれぞれ比較する必要があります。単純に考えると、これは約400億回の比較に相当します（200,000 * 200,000）。 ユーザーAとユーザーBの比較は、ユーザーBとユーザーAの比較と同じ結果を返すべきだと考えれば、この数字を半分にすることができます。 また、ユーザーAと自分との比較が一定の結果になると考えれば、必要な比較の数をもう少し減らすことができますが、それでも約200億回の比較が必要です。 
+# MAGIC ユーザーベースのレコメンデーションを構築するためには、約20万人のユーザーをそれぞれ比較する必要があります。単純に考えると、これは約400億回の比較に相当します(`=200,000 * 200,000`)。 ユーザーAとユーザーBの比較は、当然ユーザーBとユーザーAの比較と同じ結果になるので、この回数は実質半分になります。 また、ユーザーAと自分との比較が一定の結果になるため、必要な比較の数をもう少し減らすことができますが、それでも約200億回の比較が必要です。 
 # MAGIC 
 # MAGIC ユーザーペアごとに、各製品に関連する暗黙の評価を比較する必要があります。 このデータセットでは、各ユーザーペアに対して、約50,000件の製品レベルの比較を行う必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,各ユーザーkann比較で評価された製品
+# DBTITLE 1,ユーザーから評価された製品数
 # MAGIC %sql 
 # MAGIC 
 # MAGIC SELECT 'products', COUNT(DISTINCT product_id) FROM instacart.products
@@ -60,7 +65,7 @@ import math
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC しかし、ほとんどのお客様は、わずかな種類の製品しか購入しません。 ユーザーと製品の関連性は100億通りあると言われていますが、データセットでは約1400万通りしか観測されていません。
+# MAGIC しかし、ほとんどのユーザー(お客様)は、わずかな種類の製品しか購入しません。 ユーザーと製品の関連性は100億通りあると言われていますが、今回のデータセットでは約1400万通りしか観測されていません。
 
 # COMMAND ----------
 
@@ -86,10 +91,9 @@ import math
 # MAGIC ユーザーベースの協調フィルタは、類似したユーザーの評価から構築された加重平均に基づいています。このようなレコメンダーを構築するための出発点は、ユーザー間の比較を構築することです。
 # MAGIC 
 # MAGIC 
-# MAGIC このような比較に取り組むための一つの方法は、とにかくやってみることです。  *ブルートフォース*では、各顧客を他の顧客と比較します。 この作業には、ユーザー同士の組み合わせをクラスターに分散させることで、Databricksのプラットフォームを活用することができます。
-# MAGIC つまり、不必要なオーバーヘッドや労力を避けるために、ユーザー間の比較をどのように効率的に行うかを念頭に置く必要があるということです。
+# MAGIC 単純な方法から試してみましょう。*ブルートフォース(総当たり)* では、各顧客を他の顧客と比較します。この作業には、ユーザー同士の組み合わせをクラスターに分散させることで、Databricksのプラットフォームをフルに活用することができます。
 # MAGIC 
-# MAGIC **注意** LIMIT句を使用して、比較対象を100人のユーザーのサブセットのみに限定しています。 これは、デモ用のコードをタイムリーに実行できるようにするためです。
+# MAGIC **注意** ここでは、デモ用をタイムリーに実行できるようにするため、LIMIT句を使用して、比較対象を100人のユーザーのサブセットのみに限定しています。
 
 # COMMAND ----------
 
@@ -109,7 +113,7 @@ ratings = (
         FROM instacart.user_ratings
         WHERE 
           split = 'calibration' AND
-          user_id IN (  -- constrain users to consider
+          user_id IN (  -- ユーザー数を絞る
             SELECT DISTINCT user_id 
             FROM instacart.user_ratings 
             WHERE split = 'calibration'
@@ -137,15 +141,17 @@ ratings_b = (
               .withColumnRenamed('ratings_list', 'values_b')
             )
 
-# calculate number of index positions required to hold product ids (add one to allow for index position 0)
 # 商品IDを保持するために必要なインデックスの数を算出（インデックス0を考慮して+1しておく)
-size = spark.sql('''SELECT 1 + COUNT(DISTINCT product_id) as size FROM instacart.products''')
+size = spark.sql('''
+  SELECT 1 + COUNT(DISTINCT product_id) as size 
+  FROM instacart.products
+  ''')
 
 # User-AとUser-Bを関連づける(Join)
 a_to_b = (
   ratings_a
-    .join(ratings_b, [ratings_a.user_a < ratings_b.user_b]) # limit user combinations to just those required
-  ).crossJoin(size)
+  .join(ratings_b, [ratings_a.user_a < ratings_b.user_b]) # 対称性から必要な部分だけにする  
+).crossJoin(size)
 
 display(a_to_b)
 
@@ -153,7 +159,7 @@ display(a_to_b)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC ユーザー間のマッチと比較データが整理されたところで、効率的な比較操作を可能にするために、データをスパース・ベクトルに変換してみましょう。
+# MAGIC ユーザー間のマッチと比較データが整理されたところで、効率的な比較操作を可能にするために、データをスパース・ベクトル形式に変換してみましょう。
 
 # COMMAND ----------
 
@@ -214,16 +220,12 @@ def compare_users( data ):
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC ここで定義した関数は、*data*というpandasのデータフレームを受け取ることになっています。 このデータフレームにはレコードが含まれており、各レコードは1人のユーザー(ユーザーA)ともう1人のユーザー(ユーザーB)との間の比較を表しています。また、各ユーザーには、共同でソートされた製品IDと評価のリストが提供されます。 この関数は、これらの評価を使用して、比較に必要なスパース ベクトルを組み立てる必要があります。 その後、単純なユークリッド距離計算が実行され、製品評価の観点からユーザー間の距離が *どの程度離れているか* が判断されます。
-# MAGIC 
-# MAGIC The function performing this work is defined as a [pandas UDF using the Spark 3.0 syntax](https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html#pandas-function-apis).  We will apply this function to the data organized in a Spark dataframe.  The Spark dataframe allows our data to be distributed across the worker nodes of a cluster so that the function may be applied to subsets of the dataset in a parallel manner. 
+# MAGIC ここで定義した関数は、`data`というpandasのデータフレームを受け取ることになっています。 このデータフレームにはレコードが含まれており、各レコードは1人のユーザー(ユーザーA)ともう1人のユーザー(ユーザーB)との間の比較を表しています。また、各ユーザーには、共同でソートされた製品IDと評価のリストが提供されます。この関数は、これらの評価を使用して、比較に必要なスパース ベクトルを組み立てる必要があります。 その後、単純なユークリッド距離計算が実行され、製品評価の観点からユーザー間の距離が *どの程度離れているか* が判断されます。
 # MAGIC 
 # MAGIC この作業を行う関数は、[pandas UDF using the Spark 3.0 syntax](https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html#pandas-function-apis)と定義されています。 この関数をSparkのデータフレームで整理されたデータに適用します。 Sparkデータフレームを使うことで、データをクラスタのワーカーノードに分散させ、データセットのサブセットに関数を並列に適用することができます。
 # MAGIC 
-# MAGIC To ensure our data are evenly distributed across the cluster (and therefore that each worker is assigned a reasonably consistent amount of work to perform), we are calculating an id for each record in the dataset which we can then perform a modulo calculation to assign subsets of data to a distributed set. The *monotonically_increasing_id()* function does not create a perfectly sequential id value but we should expect that through the modulo operation that we will arrive at sets that contain a similar number of records.  There is overhead in this step in that we are not only calculating an id and subsetting our data against it but we are grouping our data into those subsets, triggering a shuffle operation. For small datasets, this step may add more overhead than it is worth so that you should carefully evaluate the number of records in each dataframe partition before implementing an action such as this:
 # MAGIC 
-# MAGIC 
-# MAGIC データがクラスタ全体に均等に分散されるように（つまり、各ワーカーに適度に一貫した作業量が割り当てられるように）、データセットの各レコードのidを計算し、モジュロ計算を実行してデータのサブセットを分散セットに割り当てます。`monotonically_increasing_id()`関数は、完全に連続したid値を生成するわけではありませんが、モジュロ演算によって、同じような数のレコードを含むセットに到達することが期待できます。 このステップでは、id を計算してそれに対するデータのサブセットを作成するだけでなく、データをサブセットにグループ化してシャッフル操作を行うというオーバーヘッドがあります。小さなデータセットの場合、このステップは価値以上のオーバーヘッドをもたらす可能性があるため、このようなアクションを実装する前に、各データフレーム・パーティションのレコード数を慎重に評価する必要があります。
+# MAGIC データがクラスタ全体に均等に分散されるように（つまり、各ワーカーに適度に一貫した作業量が割り当てられるように）、データセットの各レコードのidを計算し、モジュロ計算を実行してデータのサブセットを分散セットに割り当てます。`monotonically_increasing_id()`関数は、完全に連続したid値を生成するわけではありませんが、モジュロ演算によって、同じような数のレコードを含むセットに到達することが期待できます。 このステップでは、id を計算してそれに対するデータのサブセットを作成するだけでなく、データをサブセットにグループ化してシャッフル操作を行うというオーバーヘッドがあります。小さなデータセットの場合、このステップは大きなオーバーヘッドをもたらす可能性があるため、このようなアクションを実装する前に、各データフレーム・パーティションのレコード数を慎重に評価する必要があります。
 # MAGIC 
 # MAGIC **注意** ここでの4,950件のユーザー比較は、そこそこのサイズのワーカーでもメモリ不足エラーを起こすほどの大きさではありません。 行数の上限は、誰かが上記で課したLIMITを引き上げ、実行される比較の数を指数関数的に増加させた場合に備えたものです。
 
@@ -253,7 +255,7 @@ similarities.count()
 # DBTITLE 1,Display Results of User Similarity Comparisons
 display(
   similarities
-  )
+)
 
 # COMMAND ----------
 
@@ -267,7 +269,7 @@ _ = ratings.unpersist()
 # MAGIC ブルートフォース比較のタイミングを考える前に、上の類似性データセットの user_a と user_b の間の距離をよく見てください。 L2正規化された集合では、2点間の最大距離は2の平方根になるはずです。多くのユーザーがこの距離に近い距離で離れているという事実は、(1)多くのユーザーが互いに本当に似ていないこと、(2)比較的似ているユーザーでも、多くの製品機能の違いの累積効果により、かなりの距離で離れてしまうこと、を反映しています。
 # MAGIC 
 # MAGIC 
-# MAGIC この後の問題は、しばしば「次元の呪い」と呼ばれます。 類似性の計算に使用する製品を、かなり人気のある製品のサブセットに限定したり、このデータに対して次元削減技術（主成分分析など）を適用することで、この影響を軽減できるかもしれません。ここではこれらのアプローチのデモは行いませんが、これはあなたの実装のために検討したいことです。
+# MAGIC この後の問題は、しばしば「次元の呪い」と呼ばれます。 類似性の計算に使用する製品を、かなり人気のある製品のサブセットに限定したり、このデータに対して次元削減技術（主成分分析など）を適用することで、この影響を軽減できるかもしれません。ここではこれらのアプローチのデモは行いませんが、実際の実装では検討したいことです。
 
 # COMMAND ----------
 
@@ -279,7 +281,7 @@ _ = ratings.unpersist()
 
 # COMMAND ----------
 
-# DBTITLE 1,Seconds for User-Comparisons with Variable User Counts
+# DBTITLE 1,ユーザー数を変化させた場合のユーザ間比較にかかる秒数
 timings = spark.createDataFrame(
   [
   (10,2.13),
@@ -312,7 +314,6 @@ display(
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC The brute-force approach to user-comparisons requires that we either wait for considerable amounts of time for our calculations to complete or that we add a near exponential number of resources to the exercise to keep our timings stable.  Neither of these approaches is sustainable. And for that reason, we need to find a way to limit the comparisons perform.
 # MAGIC 
 # MAGIC ユーザー比較のためのブルートフォース（総当り）方式では、計算が完了するまでかなりの時間を待つか、時間を安定させるために指数関数的に近い数のリソースを追加する必要があります。 これらのアプローチはどちらも持続可能ではありません。そのため、比較の実行を制限する方法を見つける必要があるのです。
 
@@ -324,7 +325,7 @@ display(
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_hash00x.png' width='500'>
 # MAGIC 
-# MAGIC 複数のハイパープレーンを生成することで、ユーザーを適度な大きさのバケットに分けます。 あるバケットのユーザーは、他のバケットのメンバーよりも互いに似ていると予想されます。
+# MAGIC 複数の超平面を生成することで、ユーザーを適度な大きさのバケットに分けます。 あるバケットのユーザーは、他のバケットのメンバーよりも互いに似ていると予想されます。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_hash01x.png' width='500'>
 # MAGIC 
