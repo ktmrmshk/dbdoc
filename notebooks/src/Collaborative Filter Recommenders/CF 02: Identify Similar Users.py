@@ -81,17 +81,19 @@ import math
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Identify Similar Users (Brute-Force Method)
+# MAGIC %md # Step 2: 似たようなユーザーを特定する (Brute-Force(単純総当たり)の手法)
 # MAGIC 
-# MAGIC User-based collaborative filters are based on weighted averages constructed from the ratings of similar users. A starting point for building such a recommender is the construction of a user-to-user comparison.
+# MAGIC ユーザーベースの協調フィルタは、類似したユーザーの評価から構築された加重平均に基づいています。このようなレコメンダーを構築するための出発点は、ユーザー間の比較を構築することです。
 # MAGIC 
-# MAGIC One way to tackle such a comparison is to just do it.  In a *brute-force* exercise, each customer is compared to the others.  We can take advantage of the Databricks platform for this work by distributing the user-to-user combinations across our cluster:
 # MAGIC 
-# MAGIC **NOTE** We are using a LIMIT clause to restrict comparisons to a subset of only 100 users.  This is to allow is to run this code for demonstration purposes in a timely manner.
+# MAGIC このような比較に取り組むための一つの方法は、とにかくやってみることです。  *ブルートフォース*では、各顧客を他の顧客と比較します。 この作業には、ユーザー同士の組み合わせをクラスターに分散させることで、Databricksのプラットフォームを活用することができます。
+# MAGIC つまり、不必要なオーバーヘッドや労力を避けるために、ユーザー間の比較をどのように効率的に行うかを念頭に置く必要があるということです。
+# MAGIC 
+# MAGIC **注意** LIMIT句を使用して、比較対象を100人のユーザーのサブセットのみに限定しています。 これは、デモ用のコードをタイムリーに実行できるようにするためです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Assemble User A to User B Comparisons
+# DBTITLE 1,ユーザーAとユーザーBの比較を組み立てる
 ratings = (
   spark
     .sql('''
@@ -117,9 +119,9 @@ ratings = (
         )
       GROUP BY user_id
       ''')
-  ).cache() # cache to eliminate overhead of reading data from disk in next steps
+  ).cache() # この後何回か参照されるdataframeなので、キャッシュしておく。
 
-# assemble user A data
+# User-Aについて構築
 ratings_a = (
             ratings
               .withColumnRenamed('user_id', 'user_a')
@@ -127,7 +129,7 @@ ratings_a = (
               .withColumnRenamed('ratings_list', 'values_a')
             )
 
-# assemble user B data
+# User-Bについて構築
 ratings_b = (
             ratings
               .withColumnRenamed('user_id', 'user_b')
@@ -136,9 +138,10 @@ ratings_b = (
             )
 
 # calculate number of index positions required to hold product ids (add one to allow for index position 0)
+# 商品IDを保持するために必要なインデックスの数を算出（インデックス0を考慮して+1しておく)
 size = spark.sql('''SELECT 1 + COUNT(DISTINCT product_id) as size FROM instacart.products''')
 
-# join to associate user A with user B
+# User-AとUser-Bを関連づける(Join)
 a_to_b = (
   ratings_a
     .join(ratings_b, [ratings_a.user_a < ratings_b.user_b]) # limit user combinations to just those required
@@ -148,27 +151,29 @@ display(a_to_b)
 
 # COMMAND ----------
 
-# MAGIC %md With our users matched and data organized for comparison, let's convert our data into sparse vectors to enable an efficient comparison operation: 
+# MAGIC %md 
+# MAGIC 
+# MAGIC ユーザー間のマッチと比較データが整理されたところで、効率的な比較操作を可能にするために、データをスパース・ベクトルに変換してみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Comparison Function
+# DBTITLE 1,比較するための関数を定義
 def compare_users( data ):
   '''
-  the incoming dataset is expected to have the following structure:
+  引数の`data`は以下の要素を持つdict形式:
      user_a, indices_a, values_a, user_b, indices_b, values_b, size
   '''
   
-  # list to hold results
+  # 結果を記録しておくリストを用意
   results = []
   
-  # retreive size (same across rows)
+  # サイズを抽出しておく
   size = data['size'][0]
   
-  # for each entry in this subset of data ...
+  # `data`の各データに関して、foreach loopを回す
   for row in data.itertuples(index=False):
     
-    # retrieve data from incoming dataset
+    # それぞれのデータを抽出しておく
     # -----------------------------------------------------------
     user_a = row.user_a
     indices_a = row.indices_a
@@ -179,45 +184,52 @@ def compare_users( data ):
     values_b = row.values_b
     # -----------------------------------------------------------
     
-    # construct data structures for user comparisons
+    # ユーザー間比較のためにデータを再構成
     # -----------------------------------------------------------
-    # assemble user A dataframe of ratings
+    # User-Aの評価値(ratings)をスパースベクターとして構成する
     ind_a, val_a = zip(*sorted(zip(indices_a, values_a)))
     a = Vectors.sparse(size, ind_a, val_a)
 
-    # assemble user B dataframe of ratings
+    # User-Bの評価値(ratings)をスパースベクターとして構成する
     ind_b, val_b = zip(*sorted(zip(indices_b, values_b)))
     b = Vectors.sparse(size, ind_b, val_b)
     # -----------------------------------------------------------
     
-    # calc Euclidean distance between users a and b
+    # User-A, B間のユークリッド距離を計算する
     # -----------------------------------------------------------
     distance = math.sqrt(Vectors.squared_distance(a, b))
    # -----------------------------------------------------------
   
-    # assemble results record
+    # 結果を記録しておく
     results += [(
       user_a, 
       user_b, 
       distance
       )]
   
-  # return results
+  # 最終結果を返す
   return pd.DataFrame(results)
 
 # COMMAND ----------
 
-# MAGIC %md The function we've defined is expected to receive a pandas dataframe called *data*.  That dataframe will contain records, each of which represents a comparison between one user, *i.e.* user A, and another user, *i.e.* user B. For each user, lists of co-sorted product IDs and ratings will be provided.  The function must use these ratings to assemble the sparse vectors required for the comparison.  A simple Euclidean distance calculation is then performed to determine how *far apart* the users are from each other in terms of product ratings.
+# MAGIC %md 
+# MAGIC 
+# MAGIC ここで定義した関数は、*data*というpandasのデータフレームを受け取ることになっています。 このデータフレームにはレコードが含まれており、各レコードは1人のユーザー(ユーザーA)ともう1人のユーザー(ユーザーB)との間の比較を表しています。また、各ユーザーには、共同でソートされた製品IDと評価のリストが提供されます。 この関数は、これらの評価を使用して、比較に必要なスパース ベクトルを組み立てる必要があります。 その後、単純なユークリッド距離計算が実行され、製品評価の観点からユーザー間の距離が *どの程度離れているか* が判断されます。
 # MAGIC 
 # MAGIC The function performing this work is defined as a [pandas UDF using the Spark 3.0 syntax](https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html#pandas-function-apis).  We will apply this function to the data organized in a Spark dataframe.  The Spark dataframe allows our data to be distributed across the worker nodes of a cluster so that the function may be applied to subsets of the dataset in a parallel manner. 
 # MAGIC 
+# MAGIC この作業を行う関数は、[pandas UDF using the Spark 3.0 syntax](https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html#pandas-function-apis)と定義されています。 この関数をSparkのデータフレームで整理されたデータに適用します。 Sparkデータフレームを使うことで、データをクラスタのワーカーノードに分散させ、データセットのサブセットに関数を並列に適用することができます。
+# MAGIC 
 # MAGIC To ensure our data are evenly distributed across the cluster (and therefore that each worker is assigned a reasonably consistent amount of work to perform), we are calculating an id for each record in the dataset which we can then perform a modulo calculation to assign subsets of data to a distributed set. The *monotonically_increasing_id()* function does not create a perfectly sequential id value but we should expect that through the modulo operation that we will arrive at sets that contain a similar number of records.  There is overhead in this step in that we are not only calculating an id and subsetting our data against it but we are grouping our data into those subsets, triggering a shuffle operation. For small datasets, this step may add more overhead than it is worth so that you should carefully evaluate the number of records in each dataframe partition before implementing an action such as this:
 # MAGIC 
-# MAGIC **NOTE** The 4,950 user comparisons here are nowhere near sufficiently large to create an out of memory error on a worker of even modest size.  The row count cap is simply here should someone raise the LIMIT imposed above, exponentially increasing the number of comparisons to be performed.
+# MAGIC 
+# MAGIC データがクラスタ全体に均等に分散されるように（つまり、各ワーカーに適度に一貫した作業量が割り当てられるように）、データセットの各レコードのidを計算し、モジュロ計算を実行してデータのサブセットを分散セットに割り当てます。`monotonically_increasing_id()`関数は、完全に連続したid値を生成するわけではありませんが、モジュロ演算によって、同じような数のレコードを含むセットに到達することが期待できます。 このステップでは、id を計算してそれに対するデータのサブセットを作成するだけでなく、データをサブセットにグループ化してシャッフル操作を行うというオーバーヘッドがあります。小さなデータセットの場合、このステップは価値以上のオーバーヘッドをもたらす可能性があるため、このようなアクションを実装する前に、各データフレーム・パーティションのレコード数を慎重に評価する必要があります。
+# MAGIC 
+# MAGIC **注意** ここでの4,950件のユーザー比較は、そこそこのサイズのワーカーでもメモリ不足エラーを起こすほどの大きさではありません。 行数の上限は、誰かが上記で課したLIMITを引き上げ、実行される比較の数を指数関数的に増加させた場合に備えたものです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate User-Similarities (100 users)
+# DBTITLE 1,ユーザーの相似性を算出する (100 users)
 # redistribute the user-to-user data and calculate similarities
 similarities = (
   a_to_b
