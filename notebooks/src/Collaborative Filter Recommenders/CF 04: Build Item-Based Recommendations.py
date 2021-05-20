@@ -3,7 +3,7 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,必要なライブラリをimport
 from pyspark.ml.linalg import Vectors, VectorUDT
 
 from pyspark.sql.functions import col, udf, max, collect_list, lit, monotonically_increasing_id ,expr, coalesce, pow, sum, count
@@ -19,11 +19,12 @@ import shutil
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Build Product Comparisons Dataset
+# MAGIC %md # Step 1: 製品比較データセットの構築
 # MAGIC 
-# MAGIC When we constructed our user-based collaborative filter, we built a vector for each user representing the implied ratings across all nearly 50,000 products in the product catalog.  These vectors would serve as the basis for calculating similarities between users.  With about 200,000 users in the system, this resulted in about 20-billion potential user comparisons which we short-cutted using Locale Sensitivity Hashing.
+# MAGIC ユーザーベースの協調フィルタを構築する際には、製品カタログに掲載されている約5万点の製品すべてに対する暗黙の評価を表すベクトルを、各ユーザーごとに構築する必要があります。 このベクトルをもとに、ユーザー間の類似性を計算します。 約200,000人のユーザーが参加するシステムでは、約200億通りのユーザー比較が発生しますが、これをロケール感度ハッシュを用いてショートカットしました。
 # MAGIC 
-# MAGIC But consider that the only way a recommendation between two users could be made is if a given customer bought products A and B and the other customer bought either product A or B.  This provides us another way to approach the problem of using user-derived ratings, one that limits the number of comparisons by focusing on points of overlap between users:
+# MAGIC 
+# MAGIC しかし、2人のユーザー間の推薦は、あるお客様が製品AとBを購入し、もう一人のお客様が製品AかBのどちらかを購入した場合にしかできないと考えてみてください。このことは、ユーザー間の重なり合う部分に焦点を当てて比較対象を限定するという、ユーザー由来の評価を使用する際の別のアプローチを提供します。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_itembased.gif" width="300">
 
@@ -65,11 +66,14 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# MAGIC %md While our product catalog consists of nearly 50,000 products which in theory could supply us 1.25-billion unique product pairs, the actual number of co-occurrences observed (where there is more than one customer involved) is closer to 56-million, less than a tenth of our theoretical number. By focusing on product pairs that actually occur, we limit our calculations to those that have the potential to be relevant and greatly reduce the complexity of our problem. This is the [core insight](https://www.cs.umd.edu/~samir/498/Amazon-Recommendations.pdf) behind item-based collaborative filtering.
+# MAGIC %md
 # MAGIC 
-# MAGIC But how exactly should we compare products in this scenario? In our previous collaborative filter, we built a feature vector containing an entry for each of our nearly 50,000 products.  If we flip the structure around, should we build a feature vector with an entry for each of our 200,000+ users?
+# MAGIC われわれの製品カタログには約5万点の製品が掲載されており、理論的には12億5000万のユニークな製品ペアを提供することができますが、実際に観測された共起の数（複数の顧客が関与している場合）は5600万に近く、理論的な数の10分の1以下となっています。実際に発生している製品ペアに焦点を当てることで、関連性のある可能性のあるものに限定して計算し、問題の複雑さを大幅に軽減することができます。これが、アイテムベースの協調フィルタリングの背景にある[コアインサイト](https://www.cs.umd.edu/~samir/498/Amazon-Recommendations.pdf)です。
 # MAGIC 
-# MAGIC The short answer is, *No*.  The longer answer is that a particular product comparison is performed because a user has purchased both products in a pair.  As a result, each users associated with a product pair contributes an implied rating to each side of the evaluation. But most product pairs have a limited number of customers associated with it:
+# MAGIC しかし、このシナリオでは、具体的にどのように製品を比較すればよいのでしょうか。前回の協調フィルタでは、約5万点の製品それぞれのエントリを含む特徴ベクトルを構築しました。 これを逆にすると、20万人以上のユーザーそれぞれのエントリを含む特徴ベクトルを構築するべきでしょうか。
+# MAGIC 
+# MAGIC 
+# MAGIC 短い答えは、「いいえ」です。 長い答えは、ある製品の比較は、ユーザーがペアの両方の製品を購入しているために行われるということです。 その結果、製品ペアに関連付けられた各ユーザーは、評価の両サイドに暗黙の評価を提供します。しかし、ほとんどの製品ペアは、それに関連する顧客の数が限られています。
 
 # COMMAND ----------
 
@@ -97,9 +101,11 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# MAGIC %md It is suprising that the highest number of users who have purchased a given product combination is less than 30,000 and that only occurs once.  If we are concerned about extreme cases such as this, we could limit the user ratings considered to a random sampling of all the available ratings once the number of users associated with a pair exceeds a certain ratio. (This idea comes directly from the Amazon paper referenced above.)  Still, most combinations occur only between a very small number of users so that for each pair we simply need to construct a feature vector of a modest size in order to measure product similarities.  
+# MAGIC %md 
 # MAGIC 
-# MAGIC This leads to an insteresting question: should we consider product pairs associated with just a few users?  If we include combinations purchased by only 2, 3 or some other trivially small number of users, do we start introducing products into the recommendations that might not be commonly considered? Depending on our goals, the inclusion of unusual product combinations may be a good thing or may be a bad thing.  Dealing with groceries, where novelty and suprise are not typically the goal, it seems to make sense that we might exclude products with too few co-occurances.  Later, we'll work to determine exactly what that the cutoff should be, but for now, let's construct our product vectors so that we might proceed with the exercise:
+# MAGIC 与えられた製品の組み合わせを購入したことのあるユーザーの最高数が30,000未満で、それが一度だけ発生しているのは驚きです。 このような極端なケースを懸念するのであれば、ペアに関連するユーザー数が一定の比率を超えた時点で、考慮するユーザー評価をすべての利用可能な評価のランダムサンプリングに制限することができます（このアイデアは、上記のAmazonの論文から直接得られたものです）。しかし、ほとんどの組み合わせは非常に少数のユーザー間でしか発生しないため、各ペアに対して、製品の類似性を測定するための適度なサイズの特徴ベクトルを構築するだけでよいのです。 
+# MAGIC 
+# MAGIC このことから、ある疑問が生まれました。それは、少数のユーザーに関連する製品ペアを考慮すべきかということです。 2人、3人、あるいはその他の些細な数のユーザーが購入した組み合わせを含めた場合、一般的には考慮されないような製品をレコメンデーションに導入することになるのでしょうか？目的に応じて、珍しい商品の組み合わせを含めることは、良いことでもあり、悪いことでもあります。 目新しさや驚きが一般的な目的ではない食料品を扱う場合、共起が少なすぎる商品を除外することは理にかなっていると思われます。 後日、カットオフ値を正確に決定する作業を行いますが、今は、練習を進めるために製品ベクトルを構築しましょう。
 
 # COMMAND ----------
 
@@ -222,7 +228,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md At this point, our work in only about half complete.  We've constructed pairs for product A and product B but excluded the product B to product A pairs as well as the product A to product A pairs. (The a.product_id < b.product_id portion of the queries above are where this occurs.)  Let's insert these into our data set now:
+# MAGIC %md 
+# MAGIC 
+# MAGIC この時点で、私たちの作業は半分ほどしか完了していません。 製品Aと製品Bのペアを構築しましたが、製品Bと製品Aのペアや、製品Aと製品Aのペアは除外しました。(上のクエリのa.product_id < b.product_idの部分がこれにあたります。)  では、これらをデータセットに挿入してみましょう。
 
 # COMMAND ----------
 
@@ -274,13 +282,15 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md By rethinking the problem, we've enabled a more direct approach to our comparison challenge.  But how exactly do we make recommendations using this data structure?
+# MAGIC %md
+# MAGIC 
+# MAGIC 問題を見直すことで、比較という課題に対してより直接的なアプローチが可能になりました。 しかし、このデータ構造を使って、具体的にどのようにレコメンデーションを行うのでしょうか？
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Build Recommendations
+# MAGIC %md # Step 2: リコメンデーションを構築する
 # MAGIC 
-# MAGIC With our user-based collaborative filter, we generated recommendations by calculating a weighted average of user-ratings extracted from similar users.  Here, we'll retrieve the products purchased by a user in our calibration period. Those products will be used to retrieve all product pairs where product A is one of the products in our purchased set.  Implied ratings and similarity scores will again be used to construct weighted averages which will serve as recommendation scores and a percent rank will then be calculated to sequence the recommendations.  We'll demonstrate this here for a single user, *user_id 148*:
+# MAGIC ユーザーベースの協調フィルタでは、類似したユーザーから抽出したユーザー評価の加重平均を計算して、おすすめ商品を生成していました。 ここでは、校正期間中にユーザーが購入した商品を検索します。これらの製品は、製品Aが購入セットの製品の1つであるすべての製品ペアを検索するために使用されます。 暗黙の評価と類似性スコアは、推薦スコアとして機能する加重平均を構築するために再び使用され、パーセントランクは、推薦を並べるために計算されます。 ここでは、1人のユーザー、*user_id 148*を対象にしてデモを行います。
 
 # COMMAND ----------
 
@@ -313,7 +323,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md As before, we have recommendations but are they any good? Let's evaluate our recommendations against the evaluation data using the same mean percent rank evaluation metric employed in the last notebook.  As before, we'll limit our evaluation to a 10% sample of our all users for expediency:
+# MAGIC %md 
+# MAGIC 
+# MAGIC 前回同様、推奨事項はありますが、それは良いものでしょうか？前回のノートブックで採用した平均パーセントランクの評価方法を使って、評価データに対して推奨事項を評価してみましょう。 前回と同様に、全ユーザーの10％のサンプルに限定して評価します。
 
 # COMMAND ----------
 
@@ -394,15 +406,19 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md **Wow!** Our evaluation score isn't just bad, it's worse than if we had made random suggestions.  *How could this be?!*
+# MAGIC %md
 # MAGIC 
-# MAGIC The most likely reason is that we are leveraging all product combinations with no consideration of how many users may have actually purchased the two products that form a product pair (as discussed earlier in this notebook). If a combination happens to be highly rated for a very small number of users, it might shoot to the top of our rankings while products more popular (and therefore exposed to a wider range of ratings) might be pushed below it.  With this in mind, we might limit the products we recommend to those with a minimum number of user ratings associated with a product pair.
+# MAGIC **すごい！** 評価点が悪いだけでなく、ランダムに提案した場合よりも悪くなってしまいました。 *これはどうしたことでしょうか?*
 # MAGIC 
-# MAGIC In addition, we might recognize that even with a user-minimum, we may still have a large number of products to recommend.  If we limit our recommendations to some maximum number of top ranked products, we might further improve our ratings.  It's important to remember that our dataset includes product-self recommendations, *i.e.* product A is most similar to product A, so that when we set this limit we want to keep in mind that one recommendation is already baked in.
 # MAGIC 
-# MAGIC Let's see how adjustments to user-minimums and product maximums affect our evaluation metric:
+# MAGIC 最も考えられる理由は、製品ペアを構成する2つの製品を実際に購入したユーザーの数を考慮せずに、すべての製品の組み合わせを利用していることです（本ノートで前述したとおり）。ある組み合わせがごく少数のユーザーから高い評価を受けた場合、その組み合わせがランキングの上位に来るかもしれませんが、より人気の高い（つまりより幅広い評価を受けた）製品は下位に押しやられてしまうかもしれません。 このようなことを考慮して、私たちは、製品ペアに関連する最小数のユーザー評価を持つ製品に推奨製品を限定することがあります。
 # MAGIC 
-# MAGIC **NOTE** This step will take a while to run depending on the resources allocated to your cluster.
+# MAGIC また、ユーザー数を最小限に抑えても、推奨する製品数が多くなる可能性があることも認識しています。 また、ユーザー数を最小限にしても、推薦する商品の数が多いことに気づくかもしれません。もし、推薦する商品をランキング上位の商品に限定すれば、評価がさらに向上するかもしれません。 このデータセットには、製品の自己推薦が含まれていることを覚えておくことが重要です。*つまり、*製品Aは製品Aに最も似ているということです。
+# MAGIC 
+# MAGIC ユーザーの最小値と製品の最大値の調整が、評価指標にどのような影響を与えるかを見てみましょう。
+# MAGIC 
+# MAGIC 
+# MAGIC **注意** このステップは、クラスタに割り当てられたリソースに応じて、実行に時間がかかります。
 
 # COMMAND ----------
 
@@ -484,7 +500,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md It appears that constraining our recommendations a bit leads to better results.  We might consider moving these constraints into the construction of the product comparisons dataset to limit our ETL cycles and improve query performance.  We are not performing at the levels we saw with our user-based collaborative filters, but the results are not bad (and may even be improved with further adjustments to our logic).
+# MAGIC %md
+# MAGIC 
+# MAGIC このように、推奨事項に少し制約を加えることで、より良い結果が得られるようです。 ETLサイクルを制限し、クエリのパフォーマンスを向上させるために、これらの制約を製品比較データセットの構築に移すことを検討しています。 ユーザーベースの協調フィルタで見られたようなレベルのパフォーマンスではありませんが、結果は悪くありません（さらにロジックを調整すれば改善されるかもしれません）。
 
 # COMMAND ----------
 
