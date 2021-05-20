@@ -257,21 +257,25 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Remove Cached Dataset
+# DBTITLE 1,キャッシュデータをクリア
 # unpersist dataset that is no longer needed
 _ = ratings.unpersist()
 
 # COMMAND ----------
 
-# MAGIC %md Before considering the timing of the brute-force comparison, take a close look at the distances between user_a and user_b in the similarities dataset above.  Notice how most values are at or close to the square root of 2. In an L2-normalized set, the maximum distance between two points should be the square root of 2. The fact that so many of our users are separated by close to that distance reflects the fact that (1) many users are truly dissimilar from one another and (2) even relatively similar users will be separated by quite a bit of distance given the cumulative effect of differences across so many product features. 
+# MAGIC %md 
+# MAGIC ブルートフォース比較のタイミングを考える前に、上の類似性データセットの user_a と user_b の間の距離をよく見てください。 L2正規化された集合では、2点間の最大距離は2の平方根になるはずです。多くのユーザーがこの距離に近い距離で離れているという事実は、(1)多くのユーザーが互いに本当に似ていないこと、(2)比較的似ているユーザーでも、多くの製品機能の違いの累積効果により、かなりの距離で離れてしまうこと、を反映しています。
 # MAGIC 
-# MAGIC This later issue is often referred to as the *curse of dimensionality*.  We might reduce its effects by limiting the products we use for performing similarity calculations to a subset of fairly popular products and/or applying dimension reduction techniques (such as principal component analysis) against this data. We will not demonstrate those approaches here but this is something you might want to explore for your implementation.
+# MAGIC 
+# MAGIC この後の問題は、しばしば「次元の呪い」と呼ばれます。 類似性の計算に使用する製品を、かなり人気のある製品のサブセットに限定したり、このデータに対して次元削減技術（主成分分析など）を適用することで、この影響を軽減できるかもしれません。ここではこれらのアプローチのデモは行いませんが、これはあなたの実装のために検討したいことです。
 
 # COMMAND ----------
 
-# MAGIC %md Returning to our performance of our brute-force comparison, notice that with only 100 users our processing time is just a few seconds.  If we were to adjust our user counts keeping the number of worker nodes to a fixed size, we will see our timings increase exponentially.  Here is a chart of comparison times relative to user-counts using a 4-worker node cluster with 4 vCPUs per worker.  Notice that the time to compute grows near exponentially relative to our user count:
+# MAGIC %md 
 # MAGIC 
-# MAGIC **NOTE** A scatter plot is typically used to visualize such data but the bar-chart drives how the point a little more clearly.
+# MAGIC ブルートフォース比較のパフォーマンスに話を戻すと、ユーザー数が100人の場合、処理時間はわずか数秒です。 ワーカーノードの数を固定したままユーザー数を調整すると、時間が指数関数的に増加することがわかります。 以下は、ワーカー1人あたり4vCPUの4ワーカーノードクラスタを使用した場合の、ユーザー数に対する比較時間のグラフです。 ユーザー数に対して計算時間が指数関数的に増加していることがわかります。
+# MAGIC 
+# MAGIC **注意** このようなデータを視覚化するには散布図が一般的ですが、棒グラフを使うと、より明確にポイントを把握することができます。
 
 # COMMAND ----------
 
@@ -307,23 +311,26 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md The brute-force approach to user-comparisons requires that we either wait for considerable amounts of time for our calculations to complete or that we add a near exponential number of resources to the exercise to keep our timings stable.  Neither of these approaches is sustainable. And for that reason, we need to find a way to limit the comparisons perform.
+# MAGIC %md 
+# MAGIC The brute-force approach to user-comparisons requires that we either wait for considerable amounts of time for our calculations to complete or that we add a near exponential number of resources to the exercise to keep our timings stable.  Neither of these approaches is sustainable. And for that reason, we need to find a way to limit the comparisons perform.
+# MAGIC 
+# MAGIC ユーザー比較のためのブルートフォース（総当り）方式では、計算が完了するまでかなりの時間を待つか、時間を安定させるために指数関数的に近い数のリソースを追加する必要があります。 これらのアプローチはどちらも持続可能ではありません。そのため、比較の実行を制限する方法を見つける必要があるのです。
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Identify Similar Users (LSH Method)
+# MAGIC %md # Step 3: 似たようなユーザーを特定する (LSH手法)
 # MAGIC 
-# MAGIC As an alternative to a brute-force comparison, we can use a technique called [*locality-sensitive hashing* (LSH)](https://www.slaney.org/malcolm/yahoo/Slaney2008-LSHTutorial.pdf) to quickly divide our users into buckets of **potentially** similar users. The fundamental idea behind LSH is that we can limit the number of users we need to compare by placing users into buckets and limiting our comparisons to just those users in a shared bucket.  We determine which buckets users are placed into by generating random hyper-planes (represented in this 2D image as a line) and determining whether members are above or below the plane:
+# MAGIC ブルートフォース比較の代わりに、[*locality-sensitive hashing* (LSH)](https://www.slaney.org/malcolm/yahoo/Slaney2008-LSHTutorial.pdf)と呼ばれる技術を使って、ユーザーを **潜在的に** 類似したユーザーのバケットに素早く分割することができます。LSHの基本的な考え方は、ユーザーをバケットに分け、共有されたバケット内のユーザーだけに比較を限定することで、比較する必要のあるユーザーの数を制限できるというものです。 ユーザーをどのバケットに入れるかは、ランダムな超平面（この2D画像では線で表されている）を生成し、メンバーがその平面の上にいるか下にいるかを判断することで決定します。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_hash00x.png' width='500'>
 # MAGIC 
-# MAGIC With the generation of multiple hyper-planes, we divide the users into reasonably sized buckets.  Users in a bucket are expected to be more similar to one another than members in other buckets:
+# MAGIC 複数のハイパープレーンを生成することで、ユーザーを適度な大きさのバケットに分けます。 あるバケットのユーザーは、他のバケットのメンバーよりも互いに似ていると予想されます。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_hash01x.png' width='500'>
 # MAGIC 
-# MAGIC The process doesn't guarantee a perfect separation of users into buckets where all members are more similar to each other than members in other buckets, but it provides a quick way to divvy up users into *likely* similar groups. 
+# MAGIC このプロセスは、すべてのメンバーが他のバケットのメンバーよりも互いに似ているバケットにユーザーを完全に分けることを保証するものではありませんが、ユーザーを*似ている*グループに分けるための迅速な方法を提供します。
 # MAGIC 
-# MAGIC To make use of LSH as implemented in Spark, we need to organize our user's products ratings into a sparse vector. To generate such a vector, we will create a user-defined function called *to_vector*.  We will need to pass this function not only a list of product IDs which will serve as indices in the vector, but a list of ratings for those products.  The function will also need to know how many index positions it could encounter.  As we are using the integer product IDs as our index values, we'll inform the *to_vector* UDF of the maximum product ID value in our dataset + 1 to allow a sufficient number of index positions for all of our products:
+# MAGIC Sparkに実装されているLSHを利用するには、ユーザーの商品評価をスパースなベクトルにまとめる必要があります。このようなベクトルを生成するために、*to_vector*というユーザー定義の関数を作成します。 この関数には，ベクトルのインデックスとなる商品IDのリストだけでなく，それらの商品に対する評価のリストも渡す必要があります． また、この関数は、いくつのインデックスポジションがあるのかを知る必要があります。 整数の製品IDをインデックス値として使用するので、すべての製品に対して十分な数のインデックスポジションを確保するために、データセット内の最大製品ID値+1を*to_vector* UDFに通知します。
 
 # COMMAND ----------
 
@@ -341,11 +348,12 @@ _ = spark.udf.register('to_vector', to_vector)
 
 # COMMAND ----------
 
-# MAGIC %md Now, we can prepare our dataset.  We'll do this first using SQL and then Python so that you can see multiple ways to implement the same logic. Please note that we are using the full user dataset with all 200,000+ users in it:
+# MAGIC %md
+# MAGIC さて、データセットを準備しましょう。 ここでは、同じロジックを複数の方法で実装できるように、最初にSQLを、次にPythonを使ってみます。ここでは、20万人以上のユーザーが含まれる全ユーザーデータセットを使用していることに注意してください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Prepare User Vectors (SQL)
+# DBTITLE 1,ユーザーベクターの準備 (by SQL)
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT  -- convert lists into vectors
@@ -370,7 +378,7 @@ _ = spark.udf.register('to_vector', to_vector)
 
 # COMMAND ----------
 
-# DBTITLE 1,Prepare User Vectors (Python)
+# DBTITLE 1,ユーザーベクターの準備 (by Python)
 # assemble user ratings
 user_ratings = (
   spark
@@ -418,7 +426,8 @@ display(ratings_vectors)
 
 # COMMAND ----------
 
-# MAGIC %md We can now generate an LSH table and assign users to buckets:
+# MAGIC %md
+# MAGIC これで、LSHテーブルを生成し、ユーザーをバケットに割り当てることができます。
 
 # COMMAND ----------
 
@@ -451,9 +460,10 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Let's examine the hashed output to see what LSH has done. The hash field contains an array of vectors representing the bucket assignment for each table.  With one hash table, there is one vector in the array, and it's values pivot between 0 and -1. To make this easier to see, let's extract the values from that vector:
+# MAGIC %md 
+# MAGIC LSHが何をしたのか、ハッシュ化された出力を見てみましょう。ハッシュフィールドには、各テーブルのバケットの割り当てを表すベクトルの配列が含まれています。 1つのハッシュテーブルでは、配列の中に1つのベクトルがあり、その値は0と-1の間で揺れ動きます。これを見やすくするために、そのベクトルから値を抽出してみましょう。
 # MAGIC 
-# MAGIC **NOTE** I'm going to be a little sloppy in extracting the bucket id from our hashed values vector.  Just much more succinct to do it this way.  Also, please ignore the *htable* field for now.
+# MAGIC **注意** ここでは、ハッシュ化された値のベクトルからバケットIDを抽出するために、少しずさんな方法を取ります。 このようにすると、より簡潔になります。 また、今のところ*htable*フィールドは無視してください。
 
 # COMMAND ----------
 
@@ -478,7 +488,8 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md It appears we have users divided into two buckets.  Let's take a look at the user counts within each bucket:
+# MAGIC %md 
+# MAGIC ユーザーが2つのバケットに分かれているようです。 それぞれのバケツの中のユーザー数を見てみましょう。
 
 # COMMAND ----------
 
@@ -507,7 +518,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md By simply dividing our users into two buckets, we have lowered our required user-comparison count from around 20-billion to about 11-billion: 
+# MAGIC %md 
+# MAGIC 
+# MAGIC ユーザーを2つのバケットに分けるだけで、必要なユーザー比較数を約200億人から約110億人に減らすことができました。
 
 # COMMAND ----------
 
@@ -544,9 +557,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md The number of buckets in the hash table is controlled by the *bucketLength* argument.  The lower the *bucketLength* value, the less space each bucket is expected to address and therefore the higher the number of buckets needed to capture all the users in the space.  You can think of this parameter as something like a reverse throttle which when lowered increases the number of hyper-planes used to carve up the space and the number of resulting buckets in the output.
+# MAGIC %md 
 # MAGIC 
-# MAGIC While some notes in the [code for the BucketedRandomProjectionLSH transformation](https://github.com/apache/spark/blob/master/mllib/src/main/scala/org/apache/spark/ml/feature/BucketedRandomProjectionLSH.scala) indicates a *bucketLength* between 1 and 10 might serve our needs best, we can see that a *bucketLength* of 1.0 is only generating a single hyper-plane which divides our users into just two buckets. We'll need to lower this parameters value to generate higher bucket counts:
+# MAGIC ハッシュテーブル内のバケットの数は、*bucketLength*引数によって制御されます。 *bucketLength*の値が低いほど、各バケットが対応するスペースが少なくなり、スペース内のすべてのユーザーを捕捉するために必要なバケットの数が多くなります。 このパラメータは、逆スロットルのようなものだと考えることができます。このパラメータを下げると、空間を切り分けるために使用される超平面の数が増え、結果として出力されるバケットの数が増えます。
+# MAGIC 
+# MAGIC BucketedRandomProjectionLSH変換のコード](https://github.com/apache/spark/blob/master/mllib/src/main/scala/org/apache/spark/ml/feature/BucketedRandomProjectionLSH.scala)では、*bucketLength*を1～10の間に設定するのが最適であるとされていますが、*bucketLength*を1.0に設定すると、ユーザーを2つのバケットに分ける単一の超平面しか生成されないことがわかります。より多くのバケット数を生成するには、このパラメータ値を下げる必要があります。
 
 # COMMAND ----------
 
@@ -634,17 +649,27 @@ hashed_vectors.createOrReplaceTempView('hashed_vectors')
 
 # COMMAND ----------
 
-# MAGIC %md Let's start examining how reducing bucketLength has impacted our data transformations by looking at the number of users per bucket.  Instead of two broad buckets, we have something like 40 buckets into which users are placed. This reduces our required user comparison count to about 1.4-billion which is good.  But take a look at the distribution of users across these buckets. 
+# MAGIC %md
+# MAGIC Let's start examining how reducing bucketLength has impacted our data transformations by looking at the number of users per bucket.  Instead of two broad buckets, we have something like 40 buckets into which users are placed. This reduces our required user comparison count to about 1.4-billion which is good.  But take a look at the distribution of users across these buckets. 
+# MAGIC 
+# MAGIC BucketLengthの削減がデータ変換にどのような影響を与えたのか、まずはバケットごとのユーザー数を見てみましょう。 2つの大規模なバケットの代わりに、ユーザーが分類されるバケットが40個ほどになりました。これにより、必要なユーザーの比較数は約14億人に減り、これは良いことです。 しかし、これらのバケットに含まれるユーザーの分布を見てみましょう。
 # MAGIC 
 # MAGIC Data Scientists typically love a nice Gaussian curve, but not in this scenario.  The centering of our users around a middle bucket, *i.e.* bucket_id=-1, is another demonstration of the *curse of dimensionality*.  Simply put, a lot of our users are very similar to one another within the 50,000 product-feature hyper-space in that they reside at the edges of the space. As such, our buckets get an uneven distribution of users in them so that some buckets will contain a large number of users to compare while others have smaller numbers of users to compare.  If our goal is to reduce the number of comparisons and make sure that we can more evenly distribute those comparisons in order to take advantage of a distributed infrastructure, we'll need to be mindful of this problem.
 # MAGIC 
+# MAGIC データサイエンティストは、美しいガウス曲線を好みますが、このシナリオでは違います。 ユーザーが中央のバケット（bucket_id=-1）に集中しているのは、「次元の呪い」を示しています。 簡単に言えば、多くのユーザーは、50,000の製品の特徴を持つ超空間の中で、互いによく似ており、空間の端に位置しているのです。そのため、バケットに含まれるユーザー数が偏ってしまい、比較対象となるユーザー数が多いバケットもあれば、比較対象となるユーザー数が少ないバケットもあるのです。 分散型のインフラを活用するために、比較回数を減らし、比較回数をより均等にすることが目的であれば、この問題を考慮する必要があります
+# MAGIC 
+# MAGIC 
 # MAGIC But returning to *bucketLength*, we can see that lowering its value increases our bucket count. Each bucket collects the users residing in the space between the various hyper-planes that are generated to divide the overall hyper-dimensional space. Each hyper-plane is randomly generated so by increasing the bucket count, we increase the number of random hyper-planes and we increase the likelihood that two very similar users might get split into separate buckets.
+# MAGIC 
+# MAGIC しかし、*bucketLength*に話を戻すと、その値を下げるとバケット数が増えることがわかります。各バケットには、全体の超次元空間を分割するために生成された様々な超平面の間の空間に存在するユーザーが集められます。各超平面はランダムに生成されるので、バケット数を増やすことで、ランダムな超平面の数が増え、よく似た2人のユーザーが別々のバケットに分けられる可能性が高くなります。
 # MAGIC 
 # MAGIC The trick to overcoming this problem is to perform the division of users into buckets multiple times.  Each permutation will be used to generate a separate, independent *hash table*. While the problem of splitting similar users into separate buckets persists, the probability that two similar users would be repeatedly split into separate buckets across different (and independent) hash tables is lower.  And if two users reside in the same bucket across any of the hash tables generated, it becomes available for a comparison:
 # MAGIC 
+# MAGIC この問題を解決するコツは、ユーザーをバケットに分割する作業を複数回行うことです。 それぞれの順列は、独立した別の *hash table* を生成するために使用されます。似たようなユーザーが別々のバケットに分割されるという問題は残りますが、2人の似たようなユーザーが、異なる（独立した）ハッシュテーブルで繰り返し別々のバケットに分割される確率は低くなります。 また、生成されたいずれかのハッシュテーブルにおいて、2人のユーザーが同じバケットに存在する場合、そのバケットは比較の対象となります。
+# MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_hash03x.png' width='600'>
 # MAGIC 
-# MAGIC Of course, computing multiple hash tables increases the computational burden of our approach.  It also increases the number of user-comparisons that must be performed if we consider that any users found in the same bucket across all the hash tables will now be compared. Determining the right number of hash tables is all about balancing computation time with willingness to *miss* a similar user.  To explore this concept, let's keep our bucket length the same as it was in the last code block and increase our hash table count to 3:
+# MAGIC もちろん、複数のハッシュテーブルを計算することは、本アプローチの計算負荷を増加させます。 また、すべてのハッシュテーブルで同じバケツに入っているユーザーが比較されることを考えると、実行しなければならないユーザー比較の数も増えます。適切なハッシュテーブルの数を決定するには、計算時間と類似したユーザーを「見逃す」ことに対する意欲のバランスを取ることが重要です。 この概念を探るために、バケットの長さを前回のコードブロックと同じにして、ハッシュテーブルの数を3に増やしてみましょう。
 
 # COMMAND ----------
 
@@ -736,13 +761,16 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Increasing our hash table count increases the number of buckets we'll need to explore to form our user comparisons.  We can see slight differences in the distribution of our user counts between the buckets which give us a sense of the impact of all of this. In total, our required user comparisons across all three tables has risen quite a bit which would tell us a large number of customers are being split into different buckets between the three tables.
+# MAGIC %md
 # MAGIC 
-# MAGIC So, is three the right number of hash tables?  Again, the answer is not straightforward as it involves making concicous decisions about tradeoffs between processing time and results accuracy.  To see this in action around a specific user, we'll do an exhaustive, brute-force comparison for a single user, *i.e.* user_id 148, and then look at results obtained when using LSH for a fixed bucket length of 0.001 with a variable number of tables:
+# MAGIC ハッシュテーブルの数を増やすと、ユーザー比較を行うために調査する必要のあるバケットの数が増えます。バケット間のユーザー数の分布にわずかな違いが見られ、これらすべての影響を感じ取ることができます。合計すると、3つのテーブル間で必要なユーザー比較がかなり増加していることから、多くのお客様が3つのテーブル間で異なるバケットに分割されていることがわかります。
+# MAGIC 
+# MAGIC では、ハッシュテーブルの数は3つでいいのでしょうか？ 繰り返しになりますが、答えは簡単ではありません。処理時間と結果の正確さの間のトレードオフに関する簡潔な決定を行う必要があるからです。 ここでは、特定のユーザーを対象に、1人のユーザー（例：* user_id 148）についてブルートフォース比較を徹底的に行い、その後、LSHを使って固定のバケット長0.001でテーブル数を変えた場合の結果を見てみましょう。
 
 # COMMAND ----------
 
-# MAGIC %md And here is the brute-force evaluation (against all 200,000 other users) for user 148:
+# MAGIC %md 
+# MAGIC そして、ユーザー148のブルートフォース評価（他の200,000人のユーザーすべてに対して）です。
 
 # COMMAND ----------
 
@@ -818,7 +846,8 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Let's now perform LSH lookups leveraging a fixed bucket length and a variable number of hash tables:
+# MAGIC %md 
+# MAGIC それでは、固定のバケット長と可変数のハッシュテーブルを使ってLSHルックアップを行ってみましょう。
 
 # COMMAND ----------
 
@@ -891,7 +920,10 @@ for i, lsh_tables in enumerate(range(1,11)):
 
 # COMMAND ----------
 
-# MAGIC %md In the bottom of the loop in the last cell, we joined our LSH lookups to our brute-force dataset.  Let's take a look at the combined results to see what's going on with our user comparisons as we add hash tables:
+# MAGIC %md
+# MAGIC 
+# MAGIC 最後のセルのループの下部では、LSHルックアップをブルートフォースのデータセットに結合しました。 組み合わせた結果を見て、ハッシュテーブルを追加したときにユーザーの比較で何が起こっているかを確認してみましょう。
+# MAGIC 最後のセルのループの下部では、LSHルックアップをブルートフォースのデータセットに結合しました。 組み合わせた結果を見て、ハッシュテーブルを追加したときにユーザーの比較で何が起こっているかを確認してみましょう。
 
 # COMMAND ----------
 
@@ -903,7 +935,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Results between runs may vary due to some of the randomness associated with bucket assignment, but what you should see are instances where some more highly similar users don't appear in the LSH results until higher numbers of tables are calculated. We can affect this by increasing our bucket length, creating fewer buckets with more users in each:
+# MAGIC %md
+# MAGIC 
+# MAGIC バケットの割り当てにはランダム性があるため、各回の結果は異なるかもしれませんが、より多くのテーブルが計算されるまで、より類似性の高いユーザーがLSHの結果に表示されないというケースが見られるはずです。この現象は、バケットの長さを長くして、より多くのユーザーを含むバケットを作ることで解決できます。
 
 # COMMAND ----------
 
@@ -968,7 +1002,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md By altering the bucket length, we can see that we're more likely to locate similar users with fewer hash tables.  Finding the right balance between these two is more an art than a science as precision involves a tradeoff with query performance.  And an exhaustive brute-force evaluation against which you can compare these results is not viable per the explanation provided at the top of this notebook.  For this reason, users of LSH are encouraged to read [Malcom Slaney *et al.*'s in-depth exploration of these aspects of LSH tuning](https://www.slaney.org/malcolm/yahoo/Slaney2012%28OptimalLSH%29.pdf) and to develop an intuition as to how these factors come together to deliver the required results.
+# MAGIC %md 
+# MAGIC 
+# MAGIC By altering the bucket length, we can see that we're more likely to locate similar users with fewer hash tables.  Finding the right balance between these two is more an art than a science as precision involves a tradeoff with query performance.  And an exhaustive brute-force evaluation against which you can compare these results is not viable per the explanation provided at the top of this notebook.  For this reason, users of LSH are encouraged to read [Malcom Slaney *et al.*'s in-depth exploration of these aspects of LSH tuning](https://www.slaney.org/malcolm/yahoo/Slaney2012%28OptimalLSH%29.pdf) and to develop an intuition as to how these factors come together to deliver the required results.
+# MAGIC 
+# MAGIC バケットの長さを変更することで、少ないハッシュテーブルで類似のユーザーを見つけられる可能性が高くなることがわかります。 この2つの適切なバランスを見つけることは、精度がクエリのパフォーマンスとトレードオフの関係にあるため、科学というよりは芸術です。 また、これらの結果を比較するための網羅的なブルートフォース評価は、このノートの冒頭で説明したように実行可能ではありません。 このため、LSHのユーザーは[Malcom Slaney *et al.*'s in-depth exploration of these aspects of LSH tuning](https://www.slaney.org/malcolm/yahoo/Slaney2012%28OptimalLSH%29.pdf)を読み、これらの要素がどのように組み合わされて必要な結果をもたらすのか、直感的に理解することをお勧めします。
 
 # COMMAND ----------
 
