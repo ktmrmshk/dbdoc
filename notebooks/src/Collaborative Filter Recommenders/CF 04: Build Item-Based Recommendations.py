@@ -216,7 +216,7 @@ product_sim = (
   )
 
 # drop any old delta lake files that might have been created
-shutil.rmtree('/dbfs/mnt/instacart/gold/product_sim', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_sim', ignore_errors=True)
 
 # persist data for future use
 (
@@ -224,11 +224,11 @@ shutil.rmtree('/dbfs/mnt/instacart/gold/product_sim', ignore_errors=True)
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/gold/product_sim')
+    .save('/tmp/mnt/instacart/gold/product_sim')
   )
 
 display(
-  spark.table('DELTA.`/mnt/instacart/gold/product_sim`')
+  spark.table('DELTA.`/tmp/mnt/instacart/gold/product_sim`')
   )
 
 # COMMAND ----------
@@ -243,7 +243,7 @@ display(
 # flip product A & product B
 (
   spark
-    .table('DELTA.`/mnt/instacart/gold/product_sim`')
+    .table('DELTA.`/tmp/mnt/instacart/gold/product_sim`')
     .selectExpr(
       'product_b as product_a',
       'product_a as product_b',
@@ -254,7 +254,7 @@ display(
     .write
     .format('delta')
     .mode('append')
-    .save('/mnt/instacart/gold/product_sim')
+    .save('/tmp/mnt/instacart/gold/product_sim')
   )
 
 # COMMAND ----------
@@ -277,7 +277,7 @@ display(
     .write
       .format('delta')
       .mode('append')
-      .save('/mnt/instacart/gold/product_sim')
+      .save('/tmp/mnt/instacart/gold/product_sim')
   )
 
 # COMMAND ----------
@@ -318,7 +318,7 @@ display(
 # MAGIC     y.product_b as product_id,
 # MAGIC     SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score
 # MAGIC   FROM instacart.user_ratings x
-# MAGIC   INNER JOIN DELTA.`/mnt/instacart/gold/product_sim` y
+# MAGIC   INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
 # MAGIC     ON x.product_id=y.product_a
 # MAGIC   WHERE 
 # MAGIC     x.split = 'calibration' AND x.user_id=148
@@ -429,7 +429,7 @@ display(
 
 # DBTITLE 1,Iterate over Thresholds
 _ = spark.sql("CACHE TABLE instacart.user_ratings")
-_ = spark.sql("CACHE TABLE DELTA.`/mnt/instacart/gold/product_sim`")
+_ = spark.sql("CACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`")
 
 results = []
 
@@ -515,4 +515,4 @@ display(
 # MAGIC %sql  
 # MAGIC UNCACHE TABLE instacart.user_ratings;
 # MAGIC UNCACHE TABLE random_users;
-# MAGIC UNCACHE TABLE DELTA.`/mnt/instacart/gold/product_sim`;
+# MAGIC UNCACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`;
