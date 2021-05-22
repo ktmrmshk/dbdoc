@@ -387,18 +387,18 @@ spark.conf.set('spark.sql.shuffle.partitions', max_partition_count)
 
 # COMMAND ----------
 
-# DBTITLE 1,Get Similar Users for a Random Sample of Users
-# ratio of customers to sample
+# DBTITLE 1,ランダムサンプルで類似ユーザーをピックアップする
+# サンプリングレート
 sample_fraction = 0.10
 
-# calculate max possible distance between users
+# 取りうる最大の距離
 max_distance = math.sqrt(2)
 
-# calculate min possible similarity (unscaled)
+# 取りうる最小の類似度
 min_score = 1 / (1 + math.sqrt(2))
 
-# remove any old comparisons that might exist
-shutil.rmtree('/dbfs/mnt/instacart/gold/similarity_results', ignore_errors=True)
+# 過去のデータがあれば削除しておく
+shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/similarity_results', ignore_errors=True)
 
 # perform similarity join for sample of users
 sample_comparisons = (
@@ -414,8 +414,8 @@ sample_comparisons = (
       'datasetA.user_id as user_a',
       'datasetB.user_id as user_b',
       'similarity_rescaled as similarity'
-      )
-  )
+    )  
+)
 
 # write output for reuse
 (
@@ -423,11 +423,11 @@ sample_comparisons = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/gold/similarity_results')
+    .save('/tmp/mnt/instacart/gold/similarity_results')
   )
 
 display(
-  spark.table( 'DELTA.`/mnt/instacart/gold/similarity_results`' )
+  spark.table( 'DELTA.`/tmp/mnt/instacart/gold/similarity_results`' )
   )
 
 # COMMAND ----------
@@ -438,7 +438,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Get k Similar Users
+# DBTITLE 1,K=10人の類似ユーザーを抽出する
 number_of_customers = 10
 
 # get k number of similar users for each sample user
@@ -454,25 +454,25 @@ similar_users =  (
           user_b,
           similarity,
           ROW_NUMBER() OVER (PARTITION BY user_a ORDER BY similarity DESC) as seq
-        FROM DELTA.`/mnt/instacart/gold/similarity_results`
+        FROM DELTA.`/tmp/mnt/instacart/gold/similarity_results`
         )
       WHERE seq <= {0}
       '''.format(number_of_customers)
       )
     )
 
-similar_users = similar_users.createOrReplaceTempView('similar_users')
+similar_users.createOrReplaceTempView('similar_users')
 display(similar_users)
 
 # COMMAND ----------
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC 似たようなユーザーのデータセットを使って、前のステップで行ったのと同様の方法で、評価と推奨を組み立てることができます。
+# MAGIC 類似ユーザーのデータセットを使って、前のステップで行ったのと同様の方法で、評価と推奨を組み立てることができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Per-User Product Ratings
+# DBTITLE 1,ユーザー毎の製品評価を抽出する
 similar_ratings = spark.sql('''
     SELECT
       m.user_a,
@@ -504,7 +504,7 @@ display(similar_ratings)
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Per-User Recommendations
+# DBTITLE 1,ユーザー毎のレコメンデーションスコアを算出する
 product_ratings = ( 
    similar_ratings
     .groupBy('user_a','product_id')
@@ -526,7 +526,7 @@ display(
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Huらに倣い、推奨度をパーセンタイルランキング（*rank_ui*）に変換し、0.0%を各顧客の最も好ましい推奨度の上位とすることができます。 ここでは、パーセンタイル・ランキングを計算するコードのユニットを、レビューのために別途示します。
+# MAGIC Huらの手法に従って、推奨度をパーセンタイルランキング（`rank_ui`）に変換します。このとき、`0.0%`を各顧客の最も好ましい推奨スコアになります。 ここでは、パーセンタイル・ランキングを計算するコードのユニットを、レビューのために別途示します。
 
 # COMMAND ----------
 
@@ -551,11 +551,11 @@ display(
 # MAGIC 
 # MAGIC このスケールで考えると、お客様が購入する商品の平均ランクが50％（0.5）程度であれば、私たちの推奨はランダムな提案と変わらないことが予想されます。 平均順位が50％以上であれば、お客様が実際に行っている方向とは反対の方向に提案していることになります。 しかし、平均ランクが50％以下であれば、お客様が認識している好みに沿った方法で製品をお勧めしていることになり、平均値を0.0に近づけるほど、その整合性は向上していきます。
 # MAGIC 
-# MAGIC そして、校正期間の情報をもとに作成した推奨事項が、評価期間の実際の購入とどのように一致するかを示しています。
+# MAGIC そして、キャリブレーション期間の情報をもとに作成した推奨事項が、評価期間の実際の購入とどのように一致するかを示しています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Evaluate User-Based Recommendations
+# DBTITLE 1,ユーザーベースのレコメンデーションの評価
 eval_set = (
   spark
     .sql('''
@@ -609,7 +609,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Rank Popular Product Recommendations
+# DBTITLE 1,人気のある商品の推奨ランク
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -627,11 +627,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md And using those percent ranks, we can calculate our evaluation metric against the evaluation set:
+# MAGIC %md そして、このパーセントランクを使って、評価セットに対する評価指標を算出することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Evaluate Popular Product Recommendations
+# DBTITLE 1,人気のある製品の推薦を評価する
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -677,7 +677,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Remove Cached Objects
+# DBTITLE 1,キャッシュをクリア
 def list_cached_dataframes():
     return [(k,v) for (k,v) in [(k,v) for (k, v) in globals().items() if isinstance(v, DataFrame)] if v.is_cached]
   

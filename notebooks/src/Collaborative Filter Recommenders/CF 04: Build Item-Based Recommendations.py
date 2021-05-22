@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %md # Chapter 4. アイテムベースのレコメンデーションの構築
+
+# COMMAND ----------
+
 # MAGIC %md The purpose of this notebook is to build and evaluate item-based collaborative filtering recommendations.  This notebook is designed to run on a **Databricks 7.1+ cluster**.
 
 # COMMAND ----------
@@ -24,27 +28,28 @@ import shutil
 # MAGIC ユーザーベースの協調フィルタを構築する際には、製品カタログに掲載されている約5万点の製品すべてに対する暗黙の評価を表すベクトルを、各ユーザーごとに構築する必要があります。 このベクトルをもとに、ユーザー間の類似性を計算します。 約200,000人のユーザーが参加するシステムでは、約200億通りのユーザー比較が発生しますが、これをロケール感度ハッシュを用いてショートカットしました。
 # MAGIC 
 # MAGIC 
-# MAGIC しかし、2人のユーザー間の推薦は、あるお客様が製品AとBを購入し、もう一人のお客様が製品AかBのどちらかを購入した場合にしかできないと考えてみてください。このことは、ユーザー間の重なり合う部分に焦点を当てて比較対象を限定するという、ユーザー由来の評価を使用する際の別のアプローチを提供します。
+# MAGIC しかし、このアプローチでは、あるお客様が製品AとBを購入し、もう一人のお客様が製品AかBのどちらかを購入した場合にしか推薦ができない(推薦スコアが算出できない)ことになります。このことは、ユーザー間の重なり合う部分に焦点を当てて比較対象を限定するという、ユーザー由来の評価を使用する際の別のアプローチを提供します。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_itembased.gif" width="300">
 
 # COMMAND ----------
 
-# DBTITLE 1,Adjust Shuffle Partitions for Performance
+# DBTITLE 1,シャッフルパーティションを変更する
 _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# MAGIC %md Let's get started by examining the number of product pairs in our dataset:
+# MAGIC %md 
+# MAGIC まず、データセットに含まれる製品ペアの数を調べてみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Cache Ratings Data for Performance
+# DBTITLE 1,使用するデータをキャッシュしておく
 # MAGIC %sql  CACHE TABLE instacart.user_ratings
 
 # COMMAND ----------
 
-# DBTITLE 1,Unique Product Co-Occurrences
+# DBTITLE 1,1組のユーザーペアから評価されているプロダクトの数
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT 
@@ -77,7 +82,7 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# DBTITLE 1,Number of Users Associated with Product Pairs
+# DBTITLE 1,製品評価ペアに紐づくユーザー数
 # MAGIC %sql 
 # MAGIC 
 # MAGIC SELECT
@@ -103,13 +108,13 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC 与えられた製品の組み合わせを購入したことのあるユーザーの最高数が30,000未満で、それが一度だけ発生しているのは驚きです。 このような極端なケースを懸念するのであれば、ペアに関連するユーザー数が一定の比率を超えた時点で、考慮するユーザー評価をすべての利用可能な評価のランダムサンプリングに制限することができます（このアイデアは、上記のAmazonの論文から直接得られたものです）。しかし、ほとんどの組み合わせは非常に少数のユーザー間でしか発生しないため、各ペアに対して、製品の類似性を測定するための適度なサイズの特徴ベクトルを構築するだけでよいのです。 
+# MAGIC 与えられた製品の組み合わせを購入したことのあるユーザーの最大が30,000未満で、それが一度だけ発生しているのは驚きです。 このような極端なケースを懸念するのであれば、ペアに関連するユーザー数が一定の比率を超えた時点で、考慮するユーザー評価をすべての利用可能な評価のランダムサンプリングに制限することができます（このアイデアは、上記のAmazonの論文から直接得られたものです）。しかし、ほとんどの組み合わせは非常に少数のユーザー間でしか発生しないため、各ペアに対して、製品の類似性を測定するための適度なサイズの特徴ベクトルを構築するだけでよいのです。 
 # MAGIC 
 # MAGIC このことから、ある疑問が生まれました。それは、少数のユーザーに関連する製品ペアを考慮すべきかということです。 2人、3人、あるいはその他の些細な数のユーザーが購入した組み合わせを含めた場合、一般的には考慮されないような製品をレコメンデーションに導入することになるのでしょうか？目的に応じて、珍しい商品の組み合わせを含めることは、良いことでもあり、悪いことでもあります。 目新しさや驚きが一般的な目的ではない食料品を扱う場合、共起が少なすぎる商品を除外することは理にかなっていると思われます。 後日、カットオフ値を正確に決定する作業を行いますが、今は、練習を進めるために製品ベクトルを構築しましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Product Similarities
+# DBTITLE 1,製品の類似性を計算する
 def compare_products( data ):
   '''
   the incoming dataset is expected to have the following structure:
