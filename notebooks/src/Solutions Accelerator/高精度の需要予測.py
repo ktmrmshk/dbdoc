@@ -381,8 +381,18 @@ model = define_prophet_model(params)
 
 import pyspark.sql.functions as psf
 
-aggregated_history_sample = history_sample.select("date", "sales").groupBy("date").agg(psf.sum("sales").alias("sales"))
-aggregated_history_pd = aggregated_history_sample.toPandas().rename(columns={'date':'ds', 'sales':'y'})[['ds','y']]
+aggregated_history_sample = (
+  history_sample
+  .select("date", "sales")
+  .groupBy("date")
+  .agg( psf.sum("sales").alias("sales") )
+)
+
+aggregated_history_pd = (
+  aggregated_history_sample
+  .toPandas()
+  .rename(columns={'date':'ds', 'sales':'y'})[['ds','y']]
+)
 
 # COMMAND ----------
 
@@ -524,10 +534,10 @@ sql_statement = '''
   '''
 
 store_item_history = (
-  spark
-    .sql( sql_statement )
-    .repartition(sc.defaultParallelism, ['store', 'item'])
-  ).cache()
+  spark    
+  .sql( sql_statement )
+  .repartition(sc.defaultParallelism, ['store', 'item'])
+).cache()
 
 # COMMAND ----------
 
