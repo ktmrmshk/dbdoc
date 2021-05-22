@@ -1,5 +1,9 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to build and evaluate user-based collaborative filtering recommendations.  This notebook is designed to run on a **Databricks 7.1+ cluster**.
+# MAGIC %md # Chapter3. ユーザーベースのリコメンデーションの構築
+
+# COMMAND ----------
+
+# MAGIC %md このノートブックの目的は、ユーザーベースの協調フィルタの構築に向けて、類似したユーザーを効率的に特定する方法を探ることです。このノートブックは、**Databricks 7.1+ クラスタ**で動作するように設計されています。 
 
 # COMMAND ----------
 
@@ -35,7 +39,7 @@ import shutil
 # COMMAND ----------
 
 # DBTITLE 1,評価値ベクターを構成する
-# define and register UDF for vector construction
+# スパースベクタに変換するためのユーザー定義関数を定義する
 @udf(VectorUDT())
 def to_vector(size, index_list, value_list):
     ind, val = zip(*sorted(zip(index_list, value_list)))
@@ -43,7 +47,7 @@ def to_vector(size, index_list, value_list):
     
 _ = spark.udf.register('to_vector', to_vector)
 
-# generate ratings vectors 
+# 評価ベクタを生成する
 ratings_vectors = spark.sql('''
   SELECT 
       user_id,
@@ -73,7 +77,7 @@ ratings_vectors = spark.sql('''
 
 # MAGIC %md 
 # MAGIC **注意** 
-# MAGIC ここで使用している*bucketLength*と*numHashTable*の設定は、前回のノートブックで検討したものとは異なります。 これらの設定は、パフォーマンスと評価指標を考慮した結果です。(以下の通りです)
+# MAGIC ここで使用している`bucketLength`と`numHashTable`の設定は、前回のノートブックで検討したものとは異なります。事前の調整でパフォーマンスと評価性能が高かったものを使用しています。
 
 # COMMAND ----------
 
@@ -88,14 +92,14 @@ lsh = BucketedRandomProjectionLSH(
   bucketLength = bucket_length
   )
 
-# fit the algorithm to the dataset
+# アルゴリズムをDatasetにfitさせる
 fitted_lsh = lsh.fit(ratings_vectors)
 
-# assign LSH buckets to users
+# LSHバケツをユーザーに割り当てる
 hashed_vectors = (
   fitted_lsh
-    .transform(ratings_vectors)
-    ).cache()
+  .transform(ratings_vectors)  
+).cache()
 
 hashed_vectors.createOrReplaceTempView('hashed_vectors')
 
@@ -106,11 +110,11 @@ hashed_vectors.createOrReplaceTempView('hashed_vectors')
 
 # COMMAND ----------
 
-# DBTITLE 1,一つのユーザーベクターを見てみる
+# DBTITLE 1,ユーザー#148のベクターを見てみる
 user_148 = (
-  hashed_vectors
-    .filter('user_id=148')
-    .select('user_id','ratings')
+  hashed_vectors  
+  .filter('user_id=148')
+  .select('user_id','ratings')
   )
 
 user_148.collect()[0]['ratings']
@@ -125,14 +129,14 @@ user_148.collect()[0]['ratings']
 # MAGIC 
 # MAGIC この *一番近い隣人* のアプローチは、評価を構築するための一貫した数のユーザーを返すという利点がありますが、それらのユーザーと我々の与えられたユーザーとの間の類似性は変化する可能性があります。
 # MAGIC 
-# MAGIC **注意** ユーザー自体、ここではuser_id 148、は結果セットに含まれます。 もし、10人の*他の*ユーザーを検索したい場合は、11人の最近傍のユーザーを指定し、その後、結果から自分のユーザーを除外する必要があります。
+# MAGIC **注意** 指定したユーザー自身、つまりこの例では`user_id=148`自身も結果セットに含まれます。よって、10人の*他の*ユーザーを検索したい場合は、11人の最近傍のユーザーを指定し、その後で、結果から自分のユーザーを除外する必要があります。
 
 # COMMAND ----------
 
 # DBTITLE 1,類似ユーザーTop10を抽出する
 number_of_customers = 10
 
-# retrieve n nearest customers 
+# N人の近傍にいるユーザーを抽出する 
 similar_k_users = (
   fitted_lsh.approxNearestNeighbors(
     hashed_vectors, 
@@ -162,18 +166,18 @@ display(similar_k_users)
 # DBTITLE 1,指定した距離範囲のユーザーを抽出する
 max_distance_from_target = 1.3
 
-# retreive all users within a distance range
+# 指定した距離範囲のユーザーを抽出する
 similar_d_users = (
-    fitted_lsh.approxSimilarityJoin(
-      user_148,
-      hashed_vectors,  
-      threshold = max_distance_from_target, 
-      distCol='distance'
-      )
-    .selectExpr('datasetA.user_id as user_a', 'datasetB.user_id as user_b', 'distance')
-    .orderBy('distance', ascending=True)
-    )
-  
+  fitted_lsh.approxSimilarityJoin(
+    user_148,
+    hashed_vectors,  
+    threshold = max_distance_from_target, 
+    distCol='distance'
+  )
+  .selectExpr('datasetA.user_id as user_a', 'datasetB.user_id as user_b', 'distance')
+  .orderBy('distance', ascending=True)    
+)
+
 display(similar_d_users)
 
 # COMMAND ----------
@@ -184,18 +188,18 @@ display(similar_d_users)
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_distance.png" width="400">
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_basicsimilarity.png" width="350">
 # MAGIC 
-# MAGIC 2人のユーザーの距離が遠いほど、似ていないことになります。 この点から、類似性は距離そのものの逆数と考えることができます。 しかし、距離はゼロになることもあるので、ゼロ除算のエラーを避けるために、距離に1を加えて関係を修正することが多い。 
+# MAGIC 2人のユーザーの距離が遠いほど、似ていないことになります。 この点から、類似性は距離そのものの逆数と考えることができます。 しかし、距離はゼロになることもあるので、ゼロ除算のエラーを避けるために、多くの場合、距離に1を加えて関係を修正します。
 # MAGIC 
 # MAGIC 類似性を計算する方法は他にもたくさんありますが、私たちの目的にはこの方法が適しているようです。
 
 # COMMAND ----------
 
 # DBTITLE 1,類似ユーザーとの類似度を算出する
-# calculate similarity score
+# 類似度を算出する
 similar_users = (
   similar_k_users
-    .withColumn('similarity', lit(1) / (lit(1) + col('distance')))
-  )
+  .withColumn('similarity', lit(1) / (lit(1) + col('distance')))  
+)
 
 display(similar_users)
 
@@ -203,26 +207,26 @@ display(similar_users)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC L2正規化ベクトル空間では、2点間の最小距離は0.0で、最大距離は2の平方根に相当します。 これは、潜在的な類似性スコアの最大値が1.0、最小値が0.414であることを意味します。 標準的な[min-max変換](https://en.wikipedia.org/wiki/Feature_scaling#Rescaling_(min-max_normalization))を適用すると、類似度スコアを1.0(最も似ている)から0.0(最も似ていない)の範囲に変換することができます。
+# MAGIC L2正規化ベクトル空間では、2点間の最小距離は0.0で、最大距離は2の平方根に相当します。 これは、潜在的な類似性スコアの最大値が1.0、最小値が0.414であることを意味します。 標準的な[min-max変換](https://en.wikipedia.org/wiki/Feature_scaling)を適用すると、類似度スコアを1.0(最も似ている)から0.0(最も似ていない)の範囲に変換することができます。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_similarityminmax2.png" width="600">
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply Min-Max Transformation to Similarity Score
-# calculate lowest possible unscaled similarity score
+# DBTITLE 1,Min-Max変換(スケーリング)を適用した類似度を算出
+# 取りうる最小値を設定
 min_score = 1 / (1 + math.sqrt(2))
 
-# calculate similarity score
+# 類似度を算出
 similar_users = (
-  similar_users
-    .withColumn(
-       'similarity_rescaled', 
-       (col('similarity') - lit(min_score)) / lit(1.0 - min_score)
-       )
-     )
+  similar_users   
+  .withColumn(
+    'similarity_rescaled', 
+    (col('similarity') - lit(min_score)) / lit(1.0 - min_score)
+  )
+)
 
-# make available for SQL query
+# SQLで利用するためにtemp viewを作成する
 similar_users.createOrReplaceTempView('similar_users')
 
 display(similar_users)
@@ -231,15 +235,20 @@ display(similar_users)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC Rescaling our similarity scores makes it easier for us to judge the degree of similarity between users. To calculate a recommendation, the similarity score will be used as a weight in a weighted average of product preferences/ratings.  There's no reason we can't make further adjustments to our similarity calculations, such as squaring the rescaled similarity scores so that weight increases exponentially as similarity approaches 1.0 Such adjustments allow us to adjust the degree of influence that similarity has on our recommendations.
+# MAGIC 類似性スコアをリスケーリングすることで、ユーザー間の類似性の度合いを判断しやすくなります。
+# MAGIC 類似性スコアはレコメンデーションを算出するときに製品の評価値の重みづけ係数として使用されます。
+# MAGIC 類似性の計算において、さらに調整処理を加えることもできます。例えば、類似性スコアの2乗を重みとして使用すれば、類似性が1.0に近づくにつれて指数関数的に重みを大きくすることができます。
+# MAGIC このような調整により、類似度が推薦に与える影響の度合いを調整することができます。
 # MAGIC 
-# MAGIC 類似性スコアをリスケーリングすることで、ユーザー間の類似性の度合いを判断しやすくなります。お勧め商品を計算する際、類似性スコアは、商品の好みや評価の加重平均の重みとして使用されます。 また、類似度の計算にさらなる調整を加えられない理由はありません。例えば、再スケーリングされた類似度スコアを2乗して、類似度が1.0に近づくにつれて重みが指数関数的に増加するようにします。このような調整により、類似度が推薦に与える影響の度合いを調整することができます。
-# MAGIC 
-# MAGIC 推薦スコアを計算する際には、あるユーザーが製品に対して評価/推奨をしていない場合、評価/推奨が0.0であることを意味するように使われる可能性があることを認識することが重要です。 目的に応じて、このようなロジックを適用するか、あるいはスキップするかを選択します（ユーザーに推奨される製品の範囲を広げる効果があります）。 ここでは、どの製品が（どの類似ユーザーによって）どのような暗黙の評価や類似度のスコアで推奨されているかを見ることができます。
+# MAGIC 推薦スコアを計算において、
+# MAGIC あるユーザーが製品に対して評価/推奨をしていない場合、評価/推奨=0.0を用いることに注意します。
+# MAGIC 目的に応じて、このロジックを使うか、あるいはスキップするかを選択します（ユーザーに推奨される製品の範囲を広げる効果があります）。 ここでは、どの製品が（どの類似ユーザーによって）どのような暗黙の評価や類似度のスコアで推奨されているかを見ることができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Product Ratings from Similar Users
+# DBTITLE 1,類似ユーザーによる製品評価
+# 類似ユーザーによる製品評価を製品毎にリスト。
+# もし類似ユーザーがその製品の評価値を持っていない場合は0を使う。
 similar_ratings = spark.sql('''
       SELECT
         m.user_id,
@@ -273,24 +282,27 @@ display(similar_ratings)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC これらの評価と類似性スコアを用いて、類似したユーザーからの類似性加重評価を平均し、製品ごとの加重平均を算出することができます。
+# MAGIC これらの評価と類似性スコアを用いて、類似したユーザーからの製品評価の加重平均を算出することができます。
+# MAGIC 
+# MAGIC (式の意味: 注目するユーザー(`user_id=148`)について、ある製品の推奨スコア:= 類似ユーザーによる製品評価をその類似ユーザーの「近さ(類似度)」で重みづけした加算平均)
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_ratingcalc.png" width="600">
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Recommendation Scores
+# DBTITLE 1,推奨スコアを計算
+
 product_ratings = ( 
-   similar_ratings
-    .groupBy('product_id')
-      .agg( 
-        sum(col('normalized_purchases') * col('similarity_rescaled')).alias('weighted_rating'),
-        sum('similarity_rescaled').alias('total_weight')
-        )
-    .withColumn('recommendation_score', col('weighted_rating')/col('total_weight'))
-    #.select('product_id', 'recommendation_score')
-    .orderBy('recommendation_score', ascending=False)
+  similar_ratings
+  .groupBy('product_id')
+  .agg( 
+    sum(col('normalized_purchases') * col('similarity_rescaled')).alias('weighted_rating'),
+    sum('similarity_rescaled').alias('total_weight') 
   )
+  .withColumn('recommendation_score', col('weighted_rating')/col('total_weight'))
+  #.select('product_id', 'recommendation_score')
+  .orderBy('recommendation_score', ascending=False)  
+)
 
 display(product_ratings)
 
@@ -298,19 +310,19 @@ display(product_ratings)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC 類似ユーザーが商品の推奨に与える影響を見るために、対象ユーザーである*user_id 148*の評価を取得してみましょう。 このユーザーの暗黙の嗜好と推薦スコアを比較すると、類似ユーザーが推薦に与える影響がわかります。
+# MAGIC 類似ユーザーが商品の推奨に与える影響を見るために、対象ユーザーである`user_id=148`の評価を取得してみましょう。 このユーザーの暗黙の嗜好と推奨スコアを比較すると、類似ユーザーがレコメンデーションに与える影響がわかります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Compare Recommendation Scores to User-Implied Scores
-# retreive actual ratings from this user
+# DBTITLE 1,推奨スコアとユーザーの評価スコアを比較する
+# ユーザー#148の実際の製品評価を抽出する
 user_product_ratings = (
   spark
     .table('instacart.user_ratings')
     .filter("user_id = 148 and split = 'calibration'")
   )
 
-# combine with recommender ratings
+# 推奨スコアと結合する
 product_ratings_for_user = (
     product_ratings
       .join( user_product_ratings, on='product_id', how='outer')
@@ -324,29 +336,44 @@ display(product_ratings_for_user)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC ユーザーの実際のスコアとレコメンデーションのスコアを比較すると、レコメンデーションがユーザーのスコアと一致している場合や、似たようなユーザーの意見に基づいて他の製品が高くなったり低くなったりしている場合、また、レコメンデーションによって新製品が紹介されている場合（ユーザーのスコアが0.0で、レコメンデーションのスコアが0.0より大きい場合）など、興味深い点があります。どのユーザーがこのレコメンドに貢献するか、類似性をどのように適用するかを決めるには、数多くの小さな選択肢がありました。 また、ターゲットユーザーが購入した商品については、類似ユーザーの評価を考慮せずにそのままスコアを付与したり、過去に購入した商品を単純に除外して新しい商品だけを推奨するなど、選択肢はまだまだあります。 これらの選択肢の中で重要なのは、レコメンダーを通してどのようなビジネス成果をもたらしたいかということです。
+# MAGIC ユーザーの実際のスコア(`user_score`)と推奨スコア(`recommendation_score`)を比較すると、
+# MAGIC 
+# MAGIC * レコメンデーションがユーザーのスコアと一致している場合、
+# MAGIC * 似たようなユーザーの意見に基づいて他の製品が高くなったり低くなったりしている場合、
+# MAGIC * レコメンデーションによって新製品が紹介されている場合（ユーザーのスコアが0.0で、レコメンデーションのスコアが0.0より大きい場合）
+# MAGIC 
+# MAGIC 
+# MAGIC など、興味深い点があります。
+# MAGIC 
+# MAGIC どのユーザーがこのレコメンドに貢献するか、類似性をどのように適用するかを決めるには、数多くの小さな選択肢がありました。 また、ターゲットユーザーが購入した商品については、類似ユーザーの評価を考慮せずにそのままスコアを付与したり、過去に購入した商品を単純に除外して新しい商品だけを推奨するなど、選択肢はまだまだあります。 これらの選択肢の中で重要なのは、レコメンダーを通してどのようなビジネス成果をもたらしたいかということです。
 
 # COMMAND ----------
 
 # MAGIC %md 
 # MAGIC # Step 2: レコメンデーションの評価
 # MAGIC 
-# MAGIC ここまでで、ユーザーベースの協調フィルタによる推薦を計算する仕組みはできましたが、作成された推薦は良いものでしょうか？これは、レコメンダーを使用する際に考慮すべき重要なポイントであり、「*良い*とは何か？」
+# MAGIC ここまでで、ユーザーベースの協調フィルタによる推薦を計算する仕組みはできましたが、作成された推薦は良いものでしょうか？これは、レコメンダーを使用する際に考慮すべき重要なポイントであり、「*良い*とは何か？」をどう評価するのかということです。
 # MAGIC 
 # MAGIC 
-# MAGIC [Gunawardana and Shani](https://www.jmlr.org/papers/volume10/gunawardana09a/gunawardana09a.pdf)は、この問題について優れた考察を行っています。彼らは、レコメンダーは特定の目標を達成するために存在し、その目標を達成する能力の観点から評価されるべきだと主張しています。 では、**私たちのレコメンダーの*目標*は何ですか**？
+# MAGIC [Gunawardana and Shani](https://www.jmlr.org/papers/volume10/gunawardana09a/gunawardana09a.pdf)は、この問題について優れた考察を行っています。彼らは、レコメンダーは特定の目標を達成するために存在し、その目標を達成する能力の観点から評価されるべきだと主張しています。 では、**私たちのレコメンダーの*目標*は何でしょうか**？
 # MAGIC 
 # MAGIC 今回のデータセットのような食料品に関するシナリオでは、ユーザーが購入したいと思うような食料品の選択肢を提示することが最も重要な目的です。
 # MAGIC 
-# MAGIC 1. Enable a more efficient shopping experience,
-# MAGIC 2. Encourage the customer to buy new products, *i.e.* products they have not purchased from us in the past,
-# MAGIC 3. Encourage the customer to buy old products, *i.e.* products they have purchased from us in the past, but which they had not originally intended to purchase when coming to the application, site or store
+# MAGIC 1. より効率的な買い物体験を提供する
+# MAGIC 2. 新しい商品の購入を促す(過去に購入したことがない商品など)
+# MAGIC 3. 購入したことがあるが、当初の購入目的にはなかった商品の購入を促す
 # MAGIC 
-# MAGIC これらの結果に対するレコメンダーの影響は、実験的な設定で簡単に測定できます。あるユーザーにはレコメンダーが表示され、あるユーザーには表示されません。 例えば、私たちの目標がより速い買い物体験を可能にすることだとしたら、私たちのレコメンダーに接したお客様は、接していないお客様よりも速く入口からチェックアウトまでの旅を終えるのでしょうか？ お客様に新しい商品を購入していただくことが目的の場合、レコメンダーに接触したお客様は、接触していないお客様に比べて、過去の購入履歴にないおすすめ商品を高い確率で購入するのでしょうか？ 我々の目標が、最初のエンゲージメントのきっかけとはならなかったかもしれない、以前に購入した商品の購入を促すことである場合、我々のレコメンダーに接触した顧客は、接触していない顧客に比べて、（以前に購入した商品に限定した）全体のバスケットサイズが大きくなるか？
+# MAGIC これらの結果に対するレコメンダーの影響は、実験的な設定で簡単に測定できます。あるユーザーにはレコメンダーが表示され、あるユーザーには表示されません。 
+# MAGIC 
+# MAGIC 例えば、私たちの目標がより速い買い物体験を可能にすることだとしたら、私たちのレコメンダーに接したお客様は、接していないお客様よりも速く入口からチェックアウトまでの手続きを終えるのでしょうか？
+# MAGIC 
+# MAGIC お客様に新しい商品を購入していただくことが目的の場合、レコメンダーに接触したお客様は、接触していないお客様に比べて、過去の購入履歴にないおすすめ商品を高い確率で購入するのでしょうか？
+# MAGIC 
+# MAGIC 我々の目標が、最初のエンゲージメントのきっかけとはならなかったかもしれない、以前に購入した商品の購入を促すことである場合、我々のレコメンダーに接触した顧客は、接触していない顧客に比べて、（以前に購入した商品に限定した）全体のバスケットサイズが大きくなるか？
 # MAGIC 
 # MAGIC 概念的には簡単に測定できますが、このような（オンライン）実験を実施するには、慎重な計画と実施が必要であり、機会費用がかかります。また、お客様のブランドに対する認識に悪影響を与えるような悪い顧客体験を提供するリスクもあります。このような理由から、私たちはしばしば、レコメンダーの現実世界の目標を、実験的な展開を試みる前にオフラインで評価できる代理目標に置き換えています。
 # MAGIC 
-# MAGIC オフライン評価のための代理目標を定義する際には、レコメンドスコアが何を表しているのかをよく考えてみるとよいでしょう。 これらのワークブックで紹介されているシナリオでは、私たちのスコアは、リピート購入から得られる暗黙の評価の加重平均値です。 Hu, Koren & Volinsky](http://yifanhu.net/PUB/cf.pdf)は、消費から得られる暗黙の評価について非常に優れた研究を行っています。彼らの研究はメディアに焦点を当てていますが、ランキング・メカニズムとしてのスコアについての彼らのアイデアに便乗して、ユーザーが反応したランキング内の平均的な位置という観点からレコメンダーを評価することができます。 この指標は、レコメンダーが顧客が最終的に購入するものと一致しているかどうかをオフラインで確認するのに役立ちます。
+# MAGIC オフライン評価のための代理目標を定義する際には、レコメンドスコアが何を表しているのかをよく考えてみるとよいでしょう。 これらのワークブックで紹介されているシナリオでは、私たちのスコアは、リピート購入から得られる暗黙の評価の加重平均値です。 [Hu, Koren & Volinsky](http://yifanhu.net/PUB/cf.pdf)は、消費から得られる暗黙の評価について非常に優れた研究を行っています。彼らの研究はメディアに焦点を当てていますが、ランキング・メカニズムとしてのスコアについての彼らのアイデアに便乗して、ユーザーが反応したランキング内の平均的な位置という観点からレコメンダーを評価することができます。 この指標は、レコメンダーが顧客が最終的に購入するものと一致しているかどうかをオフラインで確認するのに役立ちます。
 # MAGIC 
 # MAGIC しかし、その前に、評価を行うためのレコメンデーションを作成する必要があります。 データセットに含まれるすべてのユーザーに対するレコメンデーションを計算するのは大変なので、ここではランダムに抽出されたユーザーに限定して評価を行います。
 # MAGIC 
@@ -354,7 +381,7 @@ display(product_ratings_for_user)
 
 # COMMAND ----------
 
-# DBTITLE 1,Alter Shuffle Partition Count
+# DBTITLE 1,シャッフルパーティション数を変更する
 max_partition_count = sc.defaultParallelism * 100
 spark.conf.set('spark.sql.shuffle.partitions', max_partition_count) 
 
