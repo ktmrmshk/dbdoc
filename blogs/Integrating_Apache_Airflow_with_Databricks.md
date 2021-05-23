@@ -17,7 +17,7 @@
 Airflowは、依存関係管理機能を備えた汎用のワークフロースケジューラです。定期的なジョブのスケジューリングに加え、データパイプラインの異なるステージ間の明示的な依存関係を表現することができます。
 
 
-各ETLパイプラインは、タスクの有向非環状グラフ（DAG）として表現されます（SparkのDAGスケジューラやタスクとの違いはありません）。依存関係はエッジによってDAGにエンコードされます。どのエッジでも、上流のタスクが正常に完了した場合のみ、下流のタスクがスケジュールされます。例えば、以下のDAGの例では、タスクAが正常に完了した後に、タスクBとCが起動されます。タスクDは、タスクBとCの両方が正常に完了したときに起動されます。
+各[ETLパイプライン](https://databricks.com/jp/glossary/etl-pipeline)は、タスクの有向非環状グラフ（DAG）として表現されます（SparkのDAGスケジューラやタスクとの違いはありません）。依存関係はエッジによってDAGにエンコードされます。どのエッジでも、上流のタスクが正常に完了した場合のみ、下流のタスクがスケジュールされます。例えば、以下のDAGの例では、タスクAが正常に完了した後に、タスクBとCが起動されます。タスクDは、タスクBとCの両方が正常に完了したときに起動されます。
 
 ![dag](https://databricks.com/wp-content/uploads/2017/07/image1-2.png)
 
@@ -29,11 +29,11 @@ Airflow のタスクは、`operator`クラスのインスタンスで、小さ�
 ## AirflowでのDatabricksのネイティブなインテグレーション
 
 
-`DatabricksSubmitRunOperator`というAirflowのオペレーターを実装し、AirflowとDatabricksのよりスムーズな統合を可能にしました。このオペレーターを介して、Databricks Runs Submit APIエンドポイントを叩くことができ、外部からjar、pythonスクリプト、またはノートブックの単一の実行をトリガーすることができます。ランを送信する最初のリクエストを行った後、オペレーターはランの結果をポーリングし続けます。実行が正常に完了すると、オペレータは下流のタスクの実行を許可して戻ります。
+[`DatabricksSubmitRunOperator`](https://airflow.apache.org/docs/apache-airflow-providers-databricks/stable/operators.html)というAirflowのオペレーターを実装し、AirflowとDatabricksのよりスムーズな統合を可能にしました。このオペレーターを介して、Databricksの[Runs Submit](https://docs.databricks.com/dev-tools/api/latest/jobs.html#jobsjobsservicesubmitrun) APIエンドポイントを叩くことができ、外部からjar、pythonスクリプト、またはノートブックの単一の実行をトリガーすることができます。ランを送信する最初のリクエストを行った後、オペレーターはランの結果をポーリングし続けます。実行が正常に完了すると、オペレータは下流のタスクの実行を許可して戻ります。
 
 DatabricksSubmitRunOperatorをオープンソースのAirflowプロジェクトにアップストリームでコントリビュートしました。しかし、統合はAirflow 1.9.0がリリースされるまで、リリースブランチに切り込まれることはありません。それまでは、このオペレータを使用するには、Databricks のフォークである Airflow をインストールすることができます。これは基本的に Airflow バージョン 1.8.1 に私たちの DatabricksSubmitRunOperator パッチを適用したものです。
 
-```
+```bash
 pip install --upgrade "git+git://github.com/databricks/incubator-airflow.git@1.8.1-db1#egg=apache-airflow[databricks]"
 ```
 
@@ -70,7 +70,7 @@ notebook_task.set_downstream(spark_jar_task)
 
 実際には、DAGファイルを動作させるためには、他にもいくつかの詳細を記入する必要があります。最初のステップは、DAG内の各タスクに適用されるデフォルトの引数を設定することです。
 
-```
+```python
 args = {
     'owner': 'airflow',
     'email': ['airflow@example.com'],
@@ -152,7 +152,7 @@ notebook_task.set_downstream(spark_jar_task)
 
 このタスクは、`dbfs:/lib/etl-0.1.jar`にあるjarを実行します。
 
-notebook_taskでは、JSONパラメータを使用してsubmit runエンドポイントの完全な仕様を指定し、spark_jar_taskではsubmit runエンドポイントのトップレベルのキーを`DatabricksSubmitRunOperator`のパラメータにフラット化していることに注目してください。オペレータをインスタンス化する両方の方法は同等ですが、後者の方法では、`spark_python_task`や`spark_submit_task`のような新しいトップレベルのフィールドを使用することはできません。`DatabricksSubmitRunOperator`の完全なAPIについての詳細な情報は、こちらのドキュメントをご覧ください。
+notebook_taskでは、JSONパラメータを使用してsubmit runエンドポイントの完全な仕様を指定し、spark_jar_taskではsubmit runエンドポイントのトップレベルのキーを`DatabricksSubmitRunOperator`のパラメータにフラット化していることに注目してください。オペレータをインスタンス化する両方の方法は同等ですが、後者の方法では、[`spark_python_task`](https://docs.databricks.com/dev-tools/api/latest/jobs.html#request-structure)や`spark_submit_task`のような新しいトップレベルのフィールドを使用することはできません。`DatabricksSubmitRunOperator`の完全なAPIについての詳細な情報は、[こちらのドキュメント](http://apache-airflow-docs.s3-website.eu-central-1.amazonaws.com/docs/apache-airflow-providers-databricks/latest/operators.html)をご覧ください。
 
 DAGができたので、Airflowにインストールするために、`~/airflow`に`~/airflow/dags`というディレクトリを作成し、そのディレクトリにDAGをコピーします。
 
@@ -179,10 +179,11 @@ example_databricks_operator
 ![dagpreview](https://databricks.com/wp-content/uploads/2017/07/image2-2.png)
 
 
-この時点で、注意深い人は、DAG内のどこにもDatabricksシャードへのホスト名、ユーザー名、パスワードなどの情報が指定されていないことにも気づくでしょう。これを設定するには、データベースに保存されている資格情報をDAGから参照することができるAirflowの接続プリミティブを使用します。デフォルトでは、すべての`DatabricksSubmitRunOperator`は、`databricks_conn_id`パラメータを `databricks_default`に設定しているので、今回のDAGでは、`ID`が`databricks_default`のコネクションを追加する必要があります。
+この時点で、注意深い人は、DAG内のどこにもDatabricksシャードへのホスト名、ユーザー名、パスワードなどの情報が指定されていないことにも気づくでしょう。これを設定するには、データベースに保存されている資格情報をDAGから参照することができるAirflowの[connect](https://airflow.incubator.apache.org/concepts.html?highlight=connections#connections)プリミティブを使用します。デフォルトでは、すべての`DatabricksSubmitRunOperator`は、[`databricks_conn_id`](http://apache-airflow-docs.s3-website.eu-central-1.amazonaws.com/docs/apache-airflow/latest/integration.html)パラメータを `databricks_default`に設定しているので、今回のDAGでは、`ID`が`databricks_default`のコネクションを追加する必要があります。
 
 
-The easiest way to do this is through the web UI. Clicking into the “Admin” on the top and then “Connections” in the dropdown will show you all your current connections. For our use case, we’ll add a connection for “databricks_default.” The final connection should look something like this:
+これを行う最も簡単な方法は、ウェブUIからです。上部の「Admin」をクリックして、ドロップダウンの「Connections」をクリックすると、現在のすべての接続が表示されます。今回の使用例では、"databricks_default "に接続を追加します。最終的な接続は以下のようになります。
+
 
 ![ui](https://databricks.com/wp-content/uploads/2017/07/image3-2.png)
 
@@ -192,5 +193,5 @@ DAG の設定がすべて完了したところで、各タスクをテストし�
 
 ## 次のステップ
 
-結論として、このブログ記事はAirflowとDatabricksの統合をセットアップする簡単な例を提供しています。AirflowへのDatabricksの拡張と統合により、Databricks Runs Submit APIを介したアクセスが可能となり、Databricksプラットフォーム上で計算を呼び出す方法を示しています。本番環境でのAirflow導入の設定方法については、Airflowの公式ドキュメントをご覧ください。
+結論として、このブログ記事はAirflowとDatabricksの統合をセットアップする簡単な例を提供しています。AirflowへのDatabricksの拡張と統合により、Databricksの[Runs Submit](https://docs.databricks.com/dev-tools/api/latest/jobs.html#runs-submit) APIを介したアクセスが可能となり、Databricksプラットフォーム上で計算を呼び出す方法を示しています。本番環境でのAirflow導入の設定方法については、[Airflowの公式ドキュメント](https://airflow.apache.org/docs/stable/)をご覧ください。
 
