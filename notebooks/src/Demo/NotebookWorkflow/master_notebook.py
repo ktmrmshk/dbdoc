@@ -41,6 +41,13 @@ dbutils.widgets.removeAll()
 # MAGIC %md # Notebookのワークフロー管理
 # MAGIC 
 # MAGIC 外部のnotebookを呼ぶ機能を用いて、このnotebookから外部のnotebookを呼び出す。
+# MAGIC 
+# MAGIC Notebookのディレクトリ構成
+# MAGIC 
+# MAGIC * `master_notebook` <= このnotebook
+# MAGIC * `notebooks/`
+# MAGIC   - `task001` <= 実際の処理コードが書かれているnotebook
+# MAGIC   - `task002` <= 実際の処理コードが書かれているnotebook
 
 # COMMAND ----------
 
