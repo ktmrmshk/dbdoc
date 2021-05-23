@@ -325,7 +325,3 @@ mlflow.search_runs(filter_string="tags.sparkDatasourceInfo LIKE 'path=%{path},ve
 # MAGIC ## 3. データのスナップショットでロードバックを実施し学習結果を再現する
 # MAGIC 
 # MAGIC 最後に、モデルの再トレーニングに使用するために、データの特定のバージョンをロードバックすることができます。これを行うには、ノートブック上部のウィジェットを`Table version`=`1`（特徴量エンジニアリング後のデータに対応）に更新し、このノートブックのセクション1から再実行します。
-
-# COMMAND ----------
-
-
