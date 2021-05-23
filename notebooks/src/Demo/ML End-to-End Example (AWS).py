@@ -1,5 +1,6 @@
 # Databricks notebook source
-# MAGIC %md # Training Machine Learning Models on Tabular Data: An End-to-End Example
+# MAGIC %md 
+# MAGIC # Training Machine Learning Models on Tabular Data: An End-to-End Example
 # MAGIC 
 # MAGIC This tutorial covers the following steps:
 # MAGIC - Import data from your local machine into the Databricks File System (DBFS)
