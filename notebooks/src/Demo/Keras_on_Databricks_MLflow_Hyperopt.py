@@ -320,6 +320,8 @@ time.sleep(5)
 
 # COMMAND ----------
 
+# MLflowレジストリからモデルを読み込む(pull)
+# (モデル名とversionを指定でロード可能)
 keras_model = mlflow.keras.load_model(f"models:/{model_name}/{new_model_version.version}")
 
 keras_pred = keras_model.predict(X_test)
