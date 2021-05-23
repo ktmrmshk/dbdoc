@@ -60,10 +60,137 @@ Airflow のデプロイメントのための SQLite データベースとデフ�
 ```python
 notebook_task = DatabricksSubmitRunOperator(
     task_id='notebook_task',
-    …)
+    ...)
 
 spark_jar_task = DatabricksSubmitRunOperator(
     task_id='spark_jar_task',
-    …)
+    ...)
 notebook_task.set_downstream(spark_jar_task)
 ```
+
+実際には、DAGファイルを動作させるためには、他にもいくつかの詳細を記入する必要があります。最初のステップは、DAG内の各タスクに適用されるデフォルトの引数を設定することです。
+
+```
+args = {
+    'owner': 'airflow',
+    'email': ['airflow@example.com'],
+    'depends_on_past': False,
+    'start_date': airflow.utils.dates.days_ago(2)
+}
+```
+
+ここで興味深いのは`depends_on_past`と`start_date`の2つの引数です。`depends_on_past`が`true`の場合、タスクの前のインスタンスが正常に完了しない限り、タスクを起動してはいけないというシグナルをAirflowに送ります。`start_date`引数は、最初のタスクインスタンスがいつスケジュールされるかを決定します。
+
+
+
+DAGスクリプトの次のセクションでは、実際にDAGをインスタンス化します。
+
+```python
+dag = DAG(
+    dag_id='example_databricks_operator', default_args=args,
+    schedule_interval='@daily')
+```
+
+このDAGでは、ユニークなIDを与え、先に宣言したデフォルトの引数を付け、毎日のスケジュールを与えます。次に、タスクを実行するクラスタの仕様を指定します。
+
+```python
+new_cluster = {
+    'spark_version': '2.1.0-db3-scala2.11',
+    'node_type_id': 'r3.xlarge',
+    'aws_attributes': {
+        'availability': 'ON_DEMAND'
+    },
+    'num_workers': 8
+}
+```
+
+この仕様のスキーマは、Runs Submitエンドポイントの新しいクラスタフィールドと一致しています。DAGの例では、ワーカーの数を減らしたり、インスタンスサイズをより小さいものに変更することができます。
+
+最後に、`DatabricksSubmitRunOperator`をインスタンス化して、DAGに登録します。
+
+```python
+notebook_task_params = {
+    'new_cluster': new_cluster,
+    'notebook_task': {
+        'notebook_path': '/Users/airflow@example.com/PrepareData',
+    },
+}
+```
+
+```python
+# Example of using the JSON parameter to initialize the operator.
+notebook_task = DatabricksSubmitRunOperator(
+    task_id='notebook_task',
+    dag=dag,
+    json=notebook_task_params)
+```
+
+このコードでは、JSONパラメータは、Runs SubmitエンドポイントにマッチするPythonのdictionary(`dict型`)を取ります。
+
+このタスクの下流に別のタスクを追加するには、`DatabricksSubmitRunOperator`を再度インスタンス化し、`notebook_task operator`インスタンスの特別な`set_downstream`メソッドを使用して依存関係を登録します。
+
+```python
+# Example of using the named parameters of DatabricksSubmitRunOperator
+# to initialize the operator.
+spark_jar_task = DatabricksSubmitRunOperator(
+    task_id='spark_jar_task',
+    dag=dag,
+    new_cluster=new_cluster,
+    spark_jar_task={
+        'main_class_name': 'com.example.ProcessData'
+    },
+    libraries=[
+        {
+            'jar': 'dbfs:/lib/etl-0.1.jar'
+        }
+    ]
+)
+
+notebook_task.set_downstream(spark_jar_task)
+```
+
+
+このタスクは、`dbfs:/lib/etl-0.1.jar`にあるjarを実行します。
+
+notebook_taskでは、JSONパラメータを使用してsubmit runエンドポイントの完全な仕様を指定し、spark_jar_taskではsubmit runエンドポイントのトップレベルのキーを`DatabricksSubmitRunOperator`のパラメータにフラット化していることに注目してください。オペレータをインスタンス化する両方の方法は同等ですが、後者の方法では、`spark_python_task`や`spark_submit_task`のような新しいトップレベルのフィールドを使用することはできません。`DatabricksSubmitRunOperator`の完全なAPIについての詳細な情報は、こちらのドキュメントをご覧ください。
+
+DAGができたので、Airflowにインストールするために、`~/airflow`に`~/airflow/dags`というディレクトリを作成し、そのディレクトリにDAGをコピーします。
+
+この時点で、AirflowはDAGをピックアップすることができるはずです。
+
+
+```bash
+$ airflow list_dags                                                           [10:27:13]
+[2017-07-06 10:27:23,868] {__init__.py:57} INFO - Using executor SequentialExecutor
+[2017-07-06 10:27:24,238] {models.py:168} INFO - Filling up the DagBag from /Users/andrew/airflow/dags
+
+
+-------------------------------------------------------------------
+DAGS
+-------------------------------------------------------------------
+example_bash_operator
+example_branch_dop_operator_v3
+example_branch_operator
+example_databricks_operator
+```
+
+また、Web UIでDAGを可視化することもできます。起動するには、`airflow webserver`を実行し、`localhost:8080`に接続します。`example_databricks_operator`をクリックすると、DAGのビジュアライズがたくさん表示されます。ここではその例を紹介します。
+
+![dagpreview](https://databricks.com/wp-content/uploads/2017/07/image2-2.png)
+
+
+この時点で、注意深い人は、DAG内のどこにもDatabricksシャードへのホスト名、ユーザー名、パスワードなどの情報が指定されていないことにも気づくでしょう。これを設定するには、データベースに保存されている資格情報をDAGから参照することができるAirflowの接続プリミティブを使用します。デフォルトでは、すべての`DatabricksSubmitRunOperator`は、`databricks_conn_id`パラメータを `databricks_default`に設定しているので、今回のDAGでは、`ID`が`databricks_default`のコネクションを追加する必要があります。
+
+
+The easiest way to do this is through the web UI. Clicking into the “Admin” on the top and then “Connections” in the dropdown will show you all your current connections. For our use case, we’ll add a connection for “databricks_default.” The final connection should look something like this:
+
+![ui](https://databricks.com/wp-content/uploads/2017/07/image3-2.png)
+
+DAG の設定がすべて完了したところで、各タスクをテストしてみましょう。`notebook_task`については、`airflow test example_databricks_operator notebook_task 2017-07-01`、`spark_jar_task`については、`airflow test example_databricks_operator spark_jar_task 2017-07-01`を実行します。DAGをスケジュール通りに実行するには、`airflow scheduler`というコマンドでスケジューラデーモンプロセスを起動します。
+
+すべてがうまくいくと、スケジューラーを起動した後、Web UIでDAGのバックフィル実行が始まるのを確認できます。
+
+## 次のステップ
+
+結論として、このブログ記事はAirflowとDatabricksの統合をセットアップする簡単な例を提供しています。AirflowへのDatabricksの拡張と統合により、Databricks Runs Submit APIを介したアクセスが可能となり、Databricksプラットフォーム上で計算を呼び出す方法を示しています。本番環境でのAirflow導入の設定方法については、Airflowの公式ドキュメントをご覧ください。
+
