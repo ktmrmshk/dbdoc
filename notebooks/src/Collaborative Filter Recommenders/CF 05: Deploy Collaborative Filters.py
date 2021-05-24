@@ -1,10 +1,10 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to explore how the collaborative-filter recommenders developed in previous notebooks might be operationalized. This notebook should be run on a **Databricks ML 7.1+ cluster**.
+# MAGIC %md
+# MAGIC # Chapter5. 協調フィルタリングのデプロイ
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC # 協調フィルタリングのデプロイ
+# MAGIC %md The purpose of this notebook is to explore how the collaborative-filter recommenders developed in previous notebooks might be operationalized. This notebook should be run on a **Databricks ML 7.1+ cluster**.
 
 # COMMAND ----------
 

@@ -28,7 +28,7 @@ import shutil
 # MAGIC ユーザーベースの協調フィルタを構築する際には、製品カタログに掲載されている約5万点の製品すべてに対する暗黙の評価を表すベクトルを、各ユーザーごとに構築する必要があります。 このベクトルをもとに、ユーザー間の類似性を計算します。 約200,000人のユーザーが参加するシステムでは、約200億通りのユーザー比較が発生しますが、これをロケール感度ハッシュを用いてショートカットしました。
 # MAGIC 
 # MAGIC 
-# MAGIC しかし、このアプローチでは、あるお客様が製品AとBを購入し、もう一人のお客様が製品AかBのどちらかを購入した場合にしか推薦ができない(推薦スコアが算出できない)ことになります。このことは、ユーザー間の重なり合う部分に焦点を当てて比較対象を限定するという、ユーザー由来の評価を使用する際の別のアプローチを提供します。
+# MAGIC しかし、このアプローチでは、あるユーザーが製品AとBを購入し、さらに製品Aを購入したユーザー、もしくは、製品Bを購入したユーザーが存在する場合にしか推薦ができない(推薦スコアが算出できない)ことになります。このことは、ユーザー間の重なり合う部分に焦点を当てて比較対象を限定するという、ユーザー由来の評価を使用する際の別のアプローチを提供します。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_itembased.gif" width="300">
 
@@ -46,6 +46,37 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # DBTITLE 1,使用するデータをキャッシュしておく
 # MAGIC %sql  CACHE TABLE instacart.user_ratings
+
+# COMMAND ----------
+
+# DBTITLE 1,(補足) instacart.user_ratingsテーブルの内容
+# MAGIC %sql 
+# MAGIC 
+# MAGIC select * from instacart.user_ratings
+
+# COMMAND ----------
+
+# DBTITLE 1,(補足) 1組のプロダクトペアを評価しているユーザー数(次のセルで使用するサブクエリ部分)
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC   a.product_id as product_a,
+# MAGIC   b.product_id as product_b,
+# MAGIC   COUNT(*) as users
+# MAGIC FROM
+# MAGIC   instacart.user_ratings a
+# MAGIC   INNER JOIN instacart.user_ratings b ON a.user_id = b.user_id
+# MAGIC   AND a.split = b.split
+# MAGIC WHERE
+# MAGIC   a.product_id < b.product_id
+# MAGIC   AND a.split = 'calibration'
+# MAGIC GROUP BY
+# MAGIC   a.product_id,
+# MAGIC   b.product_id
+# MAGIC HAVING
+# MAGIC   COUNT(*) > 1 -- exclude purchase combinations found in association with only one user
+# MAGIC   
+# MAGIC   
+# MAGIC --- 結果から、product#24489, #28204を両方ratingsしているユーザーは2182人存在する
 
 # COMMAND ----------
 
@@ -82,7 +113,7 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# DBTITLE 1,製品評価ペアに紐づくユーザー数
+# DBTITLE 1,製品評価ペアに紐づくユーザー数の分布
 # MAGIC %sql 
 # MAGIC 
 # MAGIC SELECT
@@ -110,15 +141,15 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 # MAGIC 
 # MAGIC 与えられた製品の組み合わせを購入したことのあるユーザーの最大が30,000未満で、それが一度だけ発生しているのは驚きです。 このような極端なケースを懸念するのであれば、ペアに関連するユーザー数が一定の比率を超えた時点で、考慮するユーザー評価をすべての利用可能な評価のランダムサンプリングに制限することができます（このアイデアは、上記のAmazonの論文から直接得られたものです）。しかし、ほとんどの組み合わせは非常に少数のユーザー間でしか発生しないため、各ペアに対して、製品の類似性を測定するための適度なサイズの特徴ベクトルを構築するだけでよいのです。 
 # MAGIC 
-# MAGIC このことから、ある疑問が生まれました。それは、少数のユーザーに関連する製品ペアを考慮すべきかということです。 2人、3人、あるいはその他の些細な数のユーザーが購入した組み合わせを含めた場合、一般的には考慮されないような製品をレコメンデーションに導入することになるのでしょうか？目的に応じて、珍しい商品の組み合わせを含めることは、良いことでもあり、悪いことでもあります。 目新しさや驚きが一般的な目的ではない食料品を扱う場合、共起が少なすぎる商品を除外することは理にかなっていると思われます。 後日、カットオフ値を正確に決定する作業を行いますが、今は、練習を進めるために製品ベクトルを構築しましょう。
+# MAGIC このことから、ある疑問が生まれました。それは、少数のユーザーに関連する製品ペアを考慮すべきかということです。 2人、3人、あるいはその他の些細な数のユーザーが購入した組み合わせを含めた場合、一般的には考慮されないような製品をレコメンデーションに導入することになるのでしょうか？目的に応じて、珍しい商品の組み合わせを含めることは、良いことでもあり、悪いことでもあります。 目新しさや驚きが一般的な目的ではない食料品を扱う場合、共起が少なすぎる商品を除外することは理にかなっていると思われます。後半で、カットオフ値を正確に決定する作業を行いますが、今は、とりあえずここでは製品ベクトルを構築して、notebookを進めましょう。
 
 # COMMAND ----------
 
 # DBTITLE 1,製品の類似性を計算する
 def compare_products( data ):
   '''
-  the incoming dataset is expected to have the following structure:
-     product_a, product_b, size, values_a, values_b
+  引数`data`は以下のカラムのdataframe構成になっている想定:
+     => (product_a, product_b, size, values_a, values_b)
   '''
   
   def normalize_vector(v):
@@ -130,13 +161,13 @@ def compare_products( data ):
     return ret
   
   
-  # list to hold results
+  # 結果を保持するリストを定義しておく
   results = []
   
-  # for each entry in this subset of data ...
+  # 引数`data`の行ごとにループ
   for row in data.itertuples(index=False):
     
-    # retrieve data from incoming dataset
+    # 入力のデータセットをほどく
     # -----------------------------------------------------------
     product_a = row.product_a
     values_a = row.values_a
@@ -156,7 +187,7 @@ def compare_products( data ):
     b_norm = normalize_vector(b)
     # -----------------------------------------------------------
     
-    # calc distance and similarity
+    # 距離と類似度を算出
     # -----------------------------------------------------------
     distance = math.sqrt(Vectors.squared_distance(a_norm, b_norm))
     similarity = 1 / (1 + distance)
@@ -164,7 +195,7 @@ def compare_products( data ):
     similarity_rescaled = (similarity - similarity_min)/(1 - similarity_min)
    # -----------------------------------------------------------
   
-    # assemble results record
+    # 結果を追加
     results += [(
       product_a, 
       product_b, 
@@ -173,10 +204,11 @@ def compare_products( data ):
       similarity_rescaled
       )]
   
-  # return results
+  # 結果をPandas DFとして返す
   return pd.DataFrame(results)
 
-# assemble user ratings for each product in comparison
+
+# 比較のため、それぞれの製品のユーザー評価を構成する
 product_comp = (
   spark
     .sql('''
@@ -197,7 +229,8 @@ product_comp = (
     ''')
   )
 
-# calculate product simularities
+
+# 製品の類似性を算出
 product_sim = (
   product_comp
     .withColumn('id', monotonically_increasing_id())
@@ -215,21 +248,22 @@ product_sim = (
       )
   )
 
-# drop any old delta lake files that might have been created
+# 既存のDeltaデータがある場合は削除する
 shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_sim', ignore_errors=True)
 
-# persist data for future use
+# 製品の類似性をDeltaに書き込む(永続化)
 (
   product_sim
-    .write
-    .format('delta')
-    .mode('overwrite')
-    .save('/tmp/mnt/instacart/gold/product_sim')
-  )
+  .write
+  .format('delta')
+  .mode('overwrite')
+  .save('/tmp/mnt/instacart/gold/product_sim')  
+)
 
+# Deltaに書き込んだ結果を確認する
 display(
-  spark.table('DELTA.`/tmp/mnt/instacart/gold/product_sim`')
-  )
+  spark.table('DELTA.`/tmp/mnt/instacart/gold/product_sim`') 
+)
 
 # COMMAND ----------
 
@@ -239,27 +273,27 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Append Skipped Product Comparisons
+# DBTITLE 1,スキップした製品比較をDeltaに追加する
 # flip product A & product B
 (
-  spark
-    .table('DELTA.`/tmp/mnt/instacart/gold/product_sim`')
-    .selectExpr(
-      'product_b as product_a',
-      'product_a as product_b',
-      'size',
-      'distance',
-      'similarity'
-      )
-    .write
-    .format('delta')
-    .mode('append')
-    .save('/tmp/mnt/instacart/gold/product_sim')
+  spark   
+  .table('DELTA.`/tmp/mnt/instacart/gold/product_sim`')
+  .selectExpr(
+    'product_b as product_a',
+    'product_a as product_b',
+    'size',
+    'distance',
+    'similarity'
   )
+  .write
+  .format('delta')
+  .mode('append')
+  .save('/tmp/mnt/instacart/gold/product_sim')
+)
 
 # COMMAND ----------
 
-# DBTITLE 1,Append Product Self-Comparisons
+# DBTITLE 1,製品Aと製品A(同じ製品同士)の類似性も追加(類似度=1.0)
 # record entries for product A to product A (sim = 1.0)
 (
   spark
@@ -282,7 +316,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Uncache Ratings Data
+# DBTITLE 1,キャッシュのリリース
 # MAGIC %sql  UNCACHE TABLE instacart.user_ratings
 
 # COMMAND ----------
@@ -295,16 +329,16 @@ display(
 
 # MAGIC %md # Step 2: リコメンデーションを構築する
 # MAGIC 
-# MAGIC ユーザーベースの協調フィルタでは、類似したユーザーから抽出したユーザー評価の加重平均を計算して、おすすめ商品を生成していました。 ここでは、校正期間中にユーザーが購入した商品を検索します。これらの製品は、製品Aが購入セットの製品の1つであるすべての製品ペアを検索するために使用されます。 暗黙の評価と類似性スコアは、推薦スコアとして機能する加重平均を構築するために再び使用され、パーセントランクは、推薦を並べるために計算されます。 ここでは、1人のユーザー、*user_id 148*を対象にしてデモを行います。
+# MAGIC ユーザーベースの協調フィルタでは、類似したユーザーから抽出したユーザー評価の加重平均を計算して、おすすめ商品を生成していました。 ここでは、校正期間中にユーザーが購入した商品を検索します。これらの製品は、製品Aが購入セットの製品の1つであるすべての製品ペアを検索するために使用されます。 暗黙の評価と類似性スコアは、推薦スコアとして機能する加重平均を構築するために再び使用され、パーセントランクは、推薦を並べるために計算されます。 ここでは、1人のユーザー、`user_id=148`を対象にしてデモを行います。
 
 # COMMAND ----------
 
-# DBTITLE 1,Cache Ratings for Performance
+# DBTITLE 1,複数回参照されるテーブルをキャッシュしておく
 # MAGIC %sql  CACHE TABLE instacart.user_ratings
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Recommendations for a Sample User
+# DBTITLE 1,ユーザー#148のレコメンデーションを算出
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -334,7 +368,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Random Selection of Users
+# DBTITLE 1,ユーザーの10%をランダムにサンプル
 # MAGIC %sql
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS random_users;
@@ -399,15 +433,15 @@ eval_set = (
 
 display(
   eval_set
-    .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') )
-    .groupBy()
-      .agg(
-        sum('weighted_r').alias('numerator'),
-        sum('r_t_ui').alias('denominator')
-        )
-    .withColumn('mean_percent_rank', col('numerator')/col('denominator'))
-    .select('mean_percent_rank')
+  .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') )
+  .groupBy()
+  .agg(
+    sum('weighted_r').alias('numerator'),
+    sum('r_t_ui').alias('denominator')
   )
+  .withColumn('mean_percent_rank', col('numerator')/col('denominator'))
+  .select('mean_percent_rank')
+)
 
 # COMMAND ----------
 
