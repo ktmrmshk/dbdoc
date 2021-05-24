@@ -63,7 +63,7 @@ print(ret)
 
 # notebook "task002"を実行する
 
-# パラメータ name=abc123, age=32 をnotebookに渡す
+# パラメータ name=abc123, age=23 をnotebookに渡す
 #  => 渡されたnotebook側では、widgetとして認識されるので、dbutils.widget.get()を使用してこのパラメータを取得する
 ret = dbutils.notebook.run("./notebooks/task002", 60, {"name": "abc123", "age": "23"})
 print(ret)

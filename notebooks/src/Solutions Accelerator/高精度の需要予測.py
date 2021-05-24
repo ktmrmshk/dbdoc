@@ -352,8 +352,18 @@ from pyspark.sql.types import IntegerType
 
 # 学習用の pandas df を用意
 # 2015/1/1以降のデータから1%のサンプリングを実施
-history_sample = history.where(col("date") >= "2015-01-01").sample(fraction=0.01, seed=123)
-history_pd = history_sample.toPandas().rename(columns={'date':'ds', 'sales':'y'})[['ds','y']]
+history_sample = (
+  history
+  .where(col("date") >= "2015-01-01")
+  .sample(fraction=0.01, seed=123)
+)
+
+history_pd = (
+  history_sample
+  .toPandas()
+  .rename(columns={'date':'ds', 'sales':'y'})[['ds','y']]
+)
+
 
 # fbprophetを利用した場合のメッセージを非表示に
 import logging
@@ -422,6 +432,7 @@ display(forecast_pd)
 
 # COMMAND ----------
 
+# それぞれのdataframeのサイズを確認する
 print("history_pd:{} aggregated_history_sample:{} future_pd:{} forecast_pd:{}".format(len(history_pd), len(aggregated_history_pd), len(future_pd), len(forecast_pd)))
 
 # COMMAND ----------
@@ -644,14 +655,18 @@ def forecast_store_item( history_pd ):
 
 # COMMAND ----------
 
+display(store_item_history.groupBy('store', 'item'))   
+
+# COMMAND ----------
+
 from pyspark.sql.functions import current_date
 
 results = (
-  store_item_history
-    .groupBy('store', 'item') # 分割して予測したいカラムを定義
-    .apply(forecast_store_item) # 先のセルで定義した関数を適用 (モデリングと予測)
-    .withColumn('training_date', current_date() ) # 予測を実行した日付のカラムを追加
-    )
+  store_item_history    
+  .groupBy('store', 'item') # 分割して予測したいカラムを定義
+  .apply(forecast_store_item) # 先のセルで定義した関数を適用 (モデリングと予測)  <===== store, itemでGroupByしたDataframeに対して、上記のUDFを適用し、store, itemごとにprophetモデルを作成、推定している。
+  .withColumn('training_date', current_date() ) # 予測を実行した日付のカラムを追加
+)
 
 results.createOrReplaceTempView('new_forecasts')
 

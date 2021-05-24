@@ -35,10 +35,8 @@ np.random.seed(40)
 
 csv_url = ('/dbfs/databricks-datasets/wine-quality/winequality-red.csv')
 
-
 data = pd.read_csv(csv_url, sep=';')
-    
-    
+        
 train, test = train_test_split(data)
 
 train_x = train.drop(['quality'], axis=1)
