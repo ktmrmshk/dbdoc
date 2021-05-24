@@ -364,7 +364,7 @@ display(
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC 前回同様、推奨事項はありますが、それは良いものでしょうか？前回のノートブックで採用した平均パーセントランクの評価方法を使って、評価データに対して推奨事項を評価してみましょう。 前回と同様に、全ユーザーの10％のサンプルに限定して評価します。
+# MAGIC レコメンデーションが構築できました。前回同様にこのレコメンデーションがどの程度「良い」のかをみてみる必要があります。前回のノートブックで採用した平均パーセントランクの評価方法を使って、今回のレコメンデーションを評価してみましょう。 前回と同様に、全ユーザーの10％のサンプルに限定して評価します。
 
 # COMMAND ----------
 
@@ -389,7 +389,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Evaluation Metric without Constraints
+# DBTITLE 1,評価メトリックを算出する(制約なし)
 eval_set = (
   spark
     .sql('''
@@ -418,7 +418,7 @@ eval_set = (
           y.product_b as product_id,
           SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score
         FROM instacart.user_ratings x
-        INNER JOIN DELTA.`/mnt/instacart/gold/product_sim` y
+        INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
           ON x.product_id=y.product_a
         INNER JOIN random_users z
           ON x.user_id=z.user_id
@@ -447,12 +447,12 @@ display(
 
 # MAGIC %md
 # MAGIC 
-# MAGIC **すごい！** 評価点が悪いだけでなく、ランダムに提案した場合よりも悪くなってしまいました。 *これはどうしたことでしょうか?*
+# MAGIC **なんてことでしょう！** 評価点が悪いだけでなく、ランダムに提案した場合よりも悪くなってしまいました。 *これはどうしたことでしょうか?*
 # MAGIC 
 # MAGIC 
-# MAGIC 最も考えられる理由は、製品ペアを構成する2つの製品を実際に購入したユーザーの数を考慮せずに、すべての製品の組み合わせを利用していることです（本ノートで前述したとおり）。ある組み合わせがごく少数のユーザーから高い評価を受けた場合、その組み合わせがランキングの上位に来るかもしれませんが、より人気の高い（つまりより幅広い評価を受けた）製品は下位に押しやられてしまうかもしれません。 このようなことを考慮して、私たちは、製品ペアに関連する最小数のユーザー評価を持つ製品に推奨製品を限定することがあります。
+# MAGIC 最も考えられる理由は、製品ペアを構成する2つの製品を実際に購入したユーザーの数を考慮せずに、すべての製品の組み合わせを利用していることです（本ノートで前述したとおり）。ある組み合わせがごく少数のユーザーから高い評価を受けた場合、その組み合わせがランキングの上位に来るかもしれません。一方で、より人気の高い（つまりより幅広い評価を受けた）製品は下位に押しやられてしまうかもしれません。このようなことを考慮して、製品ペアに関連するユーザー評価数の最小値を設定し、それ以上の評価数を持つ製品のみをレコメンデーション対象にすることにしましょう。
 # MAGIC 
-# MAGIC また、ユーザー数を最小限に抑えても、推奨する製品数が多くなる可能性があることも認識しています。 また、ユーザー数を最小限にしても、推薦する商品の数が多いことに気づくかもしれません。もし、推薦する商品をランキング上位の商品に限定すれば、評価がさらに向上するかもしれません。 このデータセットには、製品の自己推薦が含まれていることを覚えておくことが重要です。*つまり、*製品Aは製品Aに最も似ているということです。
+# MAGIC また、最小の評価ユーザー数を設けても、レコメンデーション対象の製品数は多いままになります。また、ユーザー数を最小限にしても、推薦する商品の数が多いことに気づくかもしれません。逆に、推薦する商品を(購入)ランキング上位の商品に限定すれば、評価がさらに向上するかもしれません。 このデータセットには、製品の自己推薦が含まれていることを覚えておくことが重要です。*つまり、* 製品Aは製品Aに最も似ているということです。
 # MAGIC 
 # MAGIC ユーザーの最小値と製品の最大値の調整が、評価指標にどのような影響を与えるかを見てみましょう。
 # MAGIC 
@@ -461,7 +461,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Iterate over Thresholds
+# DBTITLE 1,閾値をいくつか設定して、それぞれのレコメンデーションを評価する
 _ = spark.sql("CACHE TABLE instacart.user_ratings")
 _ = spark.sql("CACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`")
 
@@ -489,7 +489,7 @@ for i in range(1,21,1):
                   product_id,
                   normalized_purchases as r_t_ui
                 FROM instacart.user_ratings 
-                WHERE split = 'evaluation' -- the test period
+                WHERE split = 'evaluation' -- "テスト用"期間のデータ
                   ) m
               INNER JOIN (
                 SELECT
@@ -510,7 +510,7 @@ for i in range(1,21,1):
                       y.similarity,
                       RANK() OVER (PARTITION BY x.user_id, x.product_id ORDER BY y.similarity DESC) as product_rank
                     FROM instacart.user_ratings x
-                    INNER JOIN DELTA.`/mnt/instacart/gold/product_sim` y
+                    INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
                       ON x.product_id=y.product_a
                     LEFT SEMI JOIN random_users z
                       ON x.user_id=z.user_id
