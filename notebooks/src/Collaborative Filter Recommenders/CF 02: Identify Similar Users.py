@@ -51,13 +51,15 @@ import math
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC ユーザーベースのレコメンデーションを構築するためには、約20万人のユーザーをそれぞれ比較する必要があります。単純に考えると、これは約400億回の比較に相当します(`=200,000 * 200,000`)。 ユーザーAとユーザーBの比較は、当然ユーザーBとユーザーAの比較と同じ結果になるので、この回数は実質半分になります。 また、ユーザーAと自分との比較が一定の結果になるため、必要な比較の数をもう少し減らすことができますが、それでも約200億回の比較が必要です。 
+# MAGIC ユーザーベースのレコメンデーションを構築するためには、約20万人のユーザーをそれぞれ比較する必要があります。単純に考えると、これは約400億回の比較に相当します(`=200,000 * 200,000`)。 
 # MAGIC 
-# MAGIC ユーザーペアごとに、各製品に関連する暗黙の評価を比較する必要があります。 このデータセットでは、各ユーザーペアに対して、約50,000件の製品レベルの比較を行う必要があります。
+# MAGIC 正確には、ユーザーAとユーザーBの比較は、当然ユーザーBとユーザーAの比較と同じ結果になるので、この回数は実質半分になります。 また、ユーザーAと自分との比較が一定の結果になるため、必要な比較回数を減らすことができます。ただし、それらは全体から見ると微々たるもので、結局は約200億回の比較が必要になります。 
+# MAGIC 
+# MAGIC ユーザーペア(2人のユーザーの組み合わせ、つまり、ユーザーAとユーザーBを1組のユーザーペアと呼びます)ごとに、各製品に関連する暗黙の評価を比較する必要があります。 (次のクエリ結果から、)このデータセットでは、各ユーザーペアに対して、約50,000件の製品レベルの比較を行う必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザーから評価された製品数
+# DBTITLE 1,データセットにある製品数
 # MAGIC %sql 
 # MAGIC 
 # MAGIC SELECT 'products', COUNT(DISTINCT product_id) FROM instacart.products
@@ -65,12 +67,14 @@ import math
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC しかし、ほとんどのユーザー(お客様)は、わずかな種類の製品しか購入しません。 ユーザーと製品の関連性は100億通りあると言われていますが、今回のデータセットでは約1400万通りしか観測されていません。
+# MAGIC しかし、ほとんどのユーザー(お客様)は、わずかな種類の製品しか購入しません。 ユーザーと製品の関連性は100億通りあると言われていますが、次のクエリ結果から、今回のデータセットでは約1400万通りしかないことがわかります。
 
 # COMMAND ----------
 
-# DBTITLE 1,User-Product Ratings
+# DBTITLE 1,「製品数」と「(それを購入したことのある)ユーザー」のペア数
 # MAGIC %sql
+# MAGIC 
+# MAGIC -- 前のnotebookで算出した"user_ratings"のusr_id, product_idのユニークレコード数
 # MAGIC 
 # MAGIC SELECT 'ratings', COUNT(*) as instances
 # MAGIC FROM (
@@ -90,21 +94,43 @@ import math
 # MAGIC 
 # MAGIC ユーザーベースの協調フィルタは、類似したユーザーの評価から構築された加重平均に基づいています。このようなレコメンダーを構築するための出発点は、ユーザー間の比較を構築することです。
 # MAGIC 
-# MAGIC 
 # MAGIC 単純な方法から試してみましょう。*ブルートフォース(総当たり)* では、各顧客を他の顧客と比較します。この作業には、ユーザー同士の組み合わせをクラスターに分散させることで、Databricksのプラットフォームをフルに活用することができます。
 # MAGIC 
 # MAGIC **注意** ここでは、デモ用をタイムリーに実行できるようにするため、LIMIT句を使用して、比較対象を100人のユーザーのサブセットのみに限定しています。
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザーAとユーザーBの比較を組み立てる
+# MAGIC %sql
+# MAGIC         SELECT
+# MAGIC           user_id,
+# MAGIC           product_id,
+# MAGIC           normalized_purchases
+# MAGIC         FROM instacart.user_ratings
+# MAGIC         WHERE 
+# MAGIC           split = 'calibration' AND
+# MAGIC           user_id IN (  -- ユーザー数を絞る
+# MAGIC             SELECT DISTINCT user_id 
+# MAGIC             FROM instacart.user_ratings 
+# MAGIC             WHERE split = 'calibration'
+# MAGIC             ORDER BY user_id 
+# MAGIC             LIMIT 100   
+# MAGIC             )
+
+# COMMAND ----------
+
+# DBTITLE 1,ユーザーAとユーザーBの比較を組み立てる (Part-1)
+# 解説: 前のnotebookで用意した"user_rating"は、ユーザー毎に、複数の製品(product_id)の
+#     評価値(実際は購入回数から算出されている)の行がある。これだと、ユーザー毎の比較がやりづらいので、
+#     ここでは、ユーザー毎に、そのユーザーが持っている製品評価を一行にまとめる処理を行う(Part-1部分)。
+#     その後、ユーザー間の比較を実施する(Part-2部分)。
+
 ratings = (
   spark
     .sql('''
       SELECT
         user_id,
-        COLLECT_LIST(product_id) as products_list,
-        COLLECT_LIST(normalized_purchases) as ratings_list
+        COLLECT_LIST(product_id) as products_list, -- <== COLLECT_LIST()で、GroupByした結果を配列(リスト化)としてまとめる。
+        COLLECT_LIST(normalized_purchases) as ratings_list -- <== 同上
       FROM (
         SELECT
           user_id,
@@ -113,7 +139,7 @@ ratings = (
         FROM instacart.user_ratings
         WHERE 
           split = 'calibration' AND
-          user_id IN (  -- ユーザー数を絞る
+          user_id IN (  -- ユーザー数を絞る <== "user_rating"の中から、100人に絞る
             SELECT DISTINCT user_id 
             FROM instacart.user_ratings 
             WHERE split = 'calibration'
@@ -125,7 +151,16 @@ ratings = (
       ''')
   ).cache() # この後何回か参照されるdataframeなので、キャッシュしておく。
 
-# User-Aについて構築
+display(ratings)
+
+# COMMAND ----------
+
+# DBTITLE 1,ユーザーAとユーザーBの比較を組み立てる (Part-2)
+# 解説: ひと組のユーザーペアでクロス分析(実施つcross join)するため、
+#      上記で整理した"rating"テーブルを2つ作り、user_idが異なる行同士をjoinさせる
+
+
+# User-Aについて構築(1つ目のテーブル)
 ratings_a = (
             ratings
               .withColumnRenamed('user_id', 'user_a')
@@ -133,7 +168,7 @@ ratings_a = (
               .withColumnRenamed('ratings_list', 'values_a')
             )
 
-# User-Bについて構築
+# User-Bについて構築(2つ目のテーブル)
 ratings_b = (
             ratings
               .withColumnRenamed('user_id', 'user_b')
@@ -141,7 +176,8 @@ ratings_b = (
               .withColumnRenamed('ratings_list', 'values_b')
             )
 
-# 商品IDを保持するために必要なインデックスの数を算出（インデックス0を考慮して+1しておく)
+# 商品IDを保持するために必要な要素数を算出（インデックス0を考慮して+1しておく)
+# このサイズはこの後使用する、スパースベクタ化で必要。
 size = spark.sql('''
   SELECT 1 + COUNT(DISTINCT product_id) as size 
   FROM instacart.products
@@ -166,7 +202,7 @@ display(a_to_b)
 # DBTITLE 1,比較するための関数を定義
 def compare_users( data ):
   '''
-  引数の`data`は以下の要素を持つdict形式:
+  引数の`data`は以下を行に持つdataframe:
      user_a, indices_a, values_a, user_b, indices_b, values_b, size
   '''
   
@@ -239,7 +275,7 @@ similarities = (
     .withColumn('subset_id', expr('id % ({0})'.format(sc.defaultParallelism * 10)))
     .groupBy('subset_id')
     .applyInPandas(
-      compare_users, 
+      compare_users, # <== ここで先ほど定義したユーザー間の距離を算出する関数をDataframe全体に適用している。
       schema='''
         user_a int, 
         user_b int, 
@@ -252,7 +288,7 @@ similarities.count()
 
 # COMMAND ----------
 
-# DBTITLE 1,Display Results of User Similarity Comparisons
+# DBTITLE 1,上記で算出したユーザー間の距離(similarities)を確認する
 display(
   similarities
 )
@@ -266,7 +302,11 @@ _ = ratings.unpersist()
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC ブルートフォース比較のタイミングを考える前に、上の類似性データセットの user_a と user_b の間の距離をよく見てください。 L2正規化された集合では、2点間の最大距離は2の平方根になるはずです。多くのユーザーがこの距離に近い距離で離れているという事実は、(1)多くのユーザーが互いに本当に似ていないこと、(2)比較的似ているユーザーでも、多くの製品機能の違いの累積効果により、かなりの距離で離れてしまうこと、を反映しています。
+# MAGIC ブルートフォース比較のタイミングを考える前に、上の類似性データセットの user_a と user_b の間の距離をよく見てください。 L2正規化された集合では、2点間の最大距離は2の平方根になるはずです。
+# MAGIC 
+# MAGIC 注: L2正規化によって全ての点が半径1の単位円/球/超球上の第一象限にある。このため距離が最大になるのは、`root(2)=1.414`になる。
+# MAGIC 
+# MAGIC 多くのユーザーがこの距離に近い距離で離れているという事実は、(1)多くのユーザーが互いに本当に似ていないこと、(2)比較的似ているユーザーでも、多くの製品機能の違いの累積効果により、かなりの距離で離れてしまうこと、を反映しています。
 # MAGIC 
 # MAGIC 
 # MAGIC この後の問題は、しばしば「次元の呪い」と呼ばれます。 類似性の計算に使用する製品を、かなり人気のある製品のサブセットに限定したり、このデータに対して次元削減技術（主成分分析など）を適用することで、この影響を軽減できるかもしれません。ここではこれらのアプローチのデモは行いませんが、実際の実装では検討したいことです。

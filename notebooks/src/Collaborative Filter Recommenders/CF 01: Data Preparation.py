@@ -511,7 +511,3 @@ display(
 # MAGIC     ON a.split=b.split;
 # MAGIC   
 # MAGIC SELECT * FROM instacart.naive_ratings ORDER BY split, product_id;
-
-# COMMAND ----------
-
-
