@@ -646,16 +646,14 @@ def forecast_store_item( history_pd ):
   # データセットを返す
   return results_pd[ ['ds', 'store', 'item', 'y', 'yhat', 'yhat_upper', 'yhat_lower'] ]  
 
+
+
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC モデリング・予測を各データセット(店舗・アイテムごとの各データセットで行っているので、<br>
 # MAGIC 最終的に予測結果を結合する処理を挟んでいますが、ベースとなる処理は#1のモデルとほとんど同じです。<br>
 # MAGIC 処理は標準的なpandasデータフレーム操作で構成されています。
-
-# COMMAND ----------
-
-display(store_item_history.groupBy('store', 'item'))   
 
 # COMMAND ----------
 

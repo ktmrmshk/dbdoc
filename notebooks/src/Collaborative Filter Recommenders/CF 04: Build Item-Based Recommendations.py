@@ -358,8 +358,45 @@ display(
 
 # COMMAND ----------
 
+# DBTITLE 1,(補足1) 先ほど作った、製品間の距離(=類似度)
+# MAGIC %sql
+# MAGIC select * from DELTA.`/tmp/mnt/instacart/gold/product_sim`
+
+# COMMAND ----------
+
+# DBTITLE 1,(補足2) ユーザー#148が購入した製品をベースに、それとペアになる製品の類似度を関連づける(join)
+# MAGIC %sql
+# MAGIC 
+# MAGIC   SELECT
+# MAGIC     x.user_id,
+# MAGIC     y.product_a,
+# MAGIC     y.product_b as product_id,
+# MAGIC     x.normalized_purchases, 
+# MAGIC     y.similarity
+# MAGIC     --SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score
+# MAGIC   FROM instacart.user_ratings x
+# MAGIC   INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
+# MAGIC     ON x.product_id=y.product_a
+# MAGIC   WHERE 
+# MAGIC     x.split = 'calibration' AND x.user_id=148 -- <== user #148を抽出
+
+# COMMAND ----------
+
 # DBTITLE 1,ユーザー#148のレコメンデーションを算出
 # MAGIC %sql
+# MAGIC 
+# MAGIC -- 解説: ユーザー#148に対して、製品#55のレコメンデーションスコアの算出を考える
+# MAGIC --       前提1: ユーザー#148が製品#11, #22, #33を購入したとする。よって、このユーザー#148による、この3つの製品の「スケール済み製品の評価」があり、それぞれ0.01, 0.02, 0.03とする。
+# MAGIC --       前提2: 製品#55-#11ペア、#55-#11ペア、#55-#33ペアの購入ユーザーが存在する。よって、このペア製品間距離(類似度)があリ、それぞれ0.4, 0.3, 0.2とする。
+# MAGIC --       
+# MAGIC --       この場合の「ユーザー#148に対して、製品#55のレコメンデーションスコア」は、
+# MAGIC --       ユーザーの「スケール済み購入評価」を重みにして、「製品の類似度」の加重平均、として評価する:
+# MAGIC --
+# MAGIC --     [例]  (0.01*0.4 + 0.02*0.3 + 0.03*0.2) / (0.4+0.3+0.2)
+# MAGIC --       
+# MAGIC --     意味として、ユーザーが高く評価している製品に関連する(ペアとなる)製品は高く重み付けされ、高く評価される。
+# MAGIC --     ユーザーが高く評価した製品Aに「近い」製品Bは、結果としてレコメンデーションスコアが高くなる。
+# MAGIC 
 # MAGIC 
 # MAGIC SELECT
 # MAGIC   user_id,
@@ -370,12 +407,12 @@ display(
 # MAGIC   SELECT
 # MAGIC     x.user_id,
 # MAGIC     y.product_b as product_id,
-# MAGIC     SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score
+# MAGIC     SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score -- <== ユーザーの「スケール済み購入評価」を重みにして、「製品の類似度」の加重平均をレコメンデーションスコアとして使う
 # MAGIC   FROM instacart.user_ratings x
 # MAGIC   INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
 # MAGIC     ON x.product_id=y.product_a
 # MAGIC   WHERE 
-# MAGIC     x.split = 'calibration' AND x.user_id=148
+# MAGIC     x.split = 'calibration' AND x.user_id=148 -- <== user #148を抽出
 # MAGIC   GROUP BY x.user_id, y.product_b
 # MAGIC   )
 # MAGIC ORDER BY user_id, rank_ui
