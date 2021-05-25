@@ -105,8 +105,15 @@ hashed_vectors.createOrReplaceTempView('hashed_vectors')
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC 
+# MAGIC SELECT * FROM hashed_vectors
+# MAGIC WHERE user_id = 148
+
+# COMMAND ----------
+
 # MAGIC %md 
-# MAGIC ここでは、ある顧客に対してどのようにレコメンデーションを作成するかを考えてみましょう。 例えば、顧客の一人である`user_id=148`の値を使って、製品の好みのベクトルを組み立てることができます。
+# MAGIC ここでは、ある顧客に対してどのようにレコメンデーションを作成するかを考えてみましょう。 例えば、ある`user_id=148`の値を使って、製品の好みのベクトルを組み立てることができます。
 
 # COMMAND ----------
 
@@ -139,9 +146,9 @@ number_of_customers = 10
 # N人の近傍にいるユーザーを抽出する 
 similar_k_users = (
   fitted_lsh.approxNearestNeighbors(
-    hashed_vectors, 
-    user_148.collect()[0]['ratings'], # must be a vector value (not a dataframe)
-    number_of_customers, 
+    hashed_vectors, # <== LSHのバケツ、ハッシュテーブルを持つ"user_ratings"のdataframe
+    user_148.collect()[0]['ratings'], # <= ベクタ形式で、ユーザーの製品評価情報を入力する
+    number_of_customers, # <= ピックアップする隣人数
     distCol='distance'
     )
     .select('user_id', 'distance')
