@@ -932,7 +932,7 @@ temp_fitted_lsh = []
 temp_hashed_vectors = []
 temp_results = []
 
-# loop through lsh table counts 1 through 10 ...
+# LSHテーブル数を1, 2, 3, ...10にした場合にどうなるかを評価する
 for i, lsh_tables in enumerate(range(1,11)):
   '''
   このループでは、
@@ -941,7 +941,7 @@ for i, lsh_tables in enumerate(range(1,11)):
   となる
   '''
   
-  # generate lsh hashes
+  # LSHのインスタンスを作成
   temp_lsh += [
     BucketedRandomProjectionLSH(
     inputCol = 'ratings', 
@@ -950,15 +950,16 @@ for i, lsh_tables in enumerate(range(1,11)):
     bucketLength = bucket_length
     )]
 
+  # LSHのfit化
   temp_fitted_lsh += [temp_lsh[i].fit(ratings_vectors)]
 
-  # calculate bucket assignments
+  # fit済LSHアルゴリズムの適用 (バケツのアサイン)
   temp_hashed_vectors += [(
     temp_fitted_lsh[i]  
     .transform(ratings_vectors)    
   )]
 
-  # lookup 100 neighbors for user 148
+  # LSHアルゴリズムに含まれる`approxNearestNeighbors()`を使用して、ユーザー#148の近傍にいる100人をピックアップ
   temp_results += [(
     
     temp_fitted_lsh[i].approxNearestNeighbors(
@@ -970,7 +971,7 @@ for i, lsh_tables in enumerate(range(1,11)):
     .select('user_id', 'distance_{0}'.format( str(lsh_tables).rjust(2,'0')))
   )]
   
-  # join results to prior results
+  # 結果を、先ほど用意した`resutls` Dataframeにカラム追加
   results = (
     results
     .join(
@@ -989,7 +990,7 @@ for i, lsh_tables in enumerate(range(1,11)):
 
 # COMMAND ----------
 
-# DBTITLE 1,Compare Exhaustive Comparisons to LSH Comparisons at Different Table Counts
+# DBTITLE 1,結果を確認(比較してみる)
 display(
   results
   .orderBy('distance', ascending=True)  
@@ -1003,7 +1004,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Identify Similar Neighbors using LSH with Differing Hash Table Counts and Higher Bucket Length
+# DBTITLE 1,今度はbucket_length=0.01にして評価してみる
 bucket_length = 0.01
 
 # initialize results with brute force results
