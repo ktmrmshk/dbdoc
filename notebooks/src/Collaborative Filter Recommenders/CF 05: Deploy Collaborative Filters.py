@@ -10,11 +10,11 @@
 
 # MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC どのレコメンダーも、そのベースとなるデータのボリュームやボラティリティに応じて、導入パターンが決まっています。また、レコメンダーで実現する特定のビジネスシナリオは、レコメンデーション・プラットフォームの実装方法にも影響します。このノートブックでは、一般的なシナリオに沿った方法で、ユーザーベースおよびアイテムベースの協調フィルタを展開する仕組みを探っていきますが、決してここで示した通りにユーザーベースまたはアイテムベースのレコメンダーを展開すべきだと提案しているわけではありません。 レコメンデーションシステムを導入する際には、レコメンデーションを使用するアプリケーションの開発者やアーキテクト、そして同様に重要な、レコメンデーションがもたらす成果に責任を持つビジネスステークホルダーと話し合うことを強くお勧めします。 このことを念頭に置いて、このノートブックで検討した展開パターンを簡単に見てみましょう。
+# MAGIC どのレコメンデーションシステムも、そのベースとなるデータのボリュームやボラティリティに応じて、導入パターンが決まってきます。また、レコメンデーションで実現する特定のビジネスシナリオは、レコメンデーション・プラットフォームの実装方法にも影響します。このノートブックでは、一般的なシナリオに沿った方法で、ユーザーベースおよびアイテムベースの協調フィルタを展開する仕組みを探っていきます。ただし、決してここで示した通りにユーザーベースまたはアイテムベースのレコメンダーを展開すべきだと提案しているわけではありません。 レコメンデーションシステムを導入する際には、レコメンデーションを使用するアプリケーションの開発者やアーキテクト、そして同時に、レコメンデーションがもたらす成果に責任を持つビジネスステークホルダーと話し合うことを強くお勧めします。 このことを念頭に置いて、このノートブックで検討した展開パターンを簡単に見てみましょう。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_pipeline.png" width="700">
 # MAGIC 
-# MAGIC この展開パターンでは、毎日、毎週、あるいは毎月、ユーザーや商品のペアを生成するプロセスを想定しています。 これらのペアは、評価データや商品データとともに、リレーショナルデータベース（またはその他のデータストア）に複製され、調整されたクエリを使用してアプリケーションで提示される推奨事項を生成します。
+# MAGIC 今回の展開シナリオでは、毎日、毎週、あるいは毎月、ユーザーや商品のペアを生成するプロセスを想定しています。 これらのペアは、評価データや商品データとともに、リレーショナルデータベース（またはその他のデータストア）に複製され、調整されたクエリを使用してアプリケーションで提示されるレコメンデーションを生成します。
 
 # COMMAND ----------
 
@@ -50,7 +50,7 @@ import shutil
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve User Ratings from Which to Construct Recommendations
+# DBTITLE 1,ユーザーの評価を取得してレコメンデーションを構築する
 user_ratings = spark.sql('''
   SELECT
     user_id,
@@ -63,7 +63,7 @@ user_ratings = spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Convert Ratings to Feature Vectors
+# DBTITLE 1,レーティングを特徴量ベクターに変換
 # define and register UDF for vector construction
 @udf(VectorUDT())
 def to_vector(size, index_list, value_list):
@@ -94,7 +94,7 @@ user_features = (
 
 # COMMAND ----------
 
-# DBTITLE 1,Assign LSH Buckets to User Vectors
+# DBTITLE 1,ユーザーベクターへLSHバケットを割り当てる
 # configure lsh transform
 fitted_lsh = (
   BucketedRandomProjectionLSH(
@@ -131,7 +131,7 @@ shutil.rmtree('/dbfs/mnt/instacart/tmp/user_features', ignore_errors=True)
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Function to Limit User-Pairs to Top 10
+# DBTITLE 1,ユーザーペアをトップ10に限定する関数を定義
 def get_top_users( data ):
   '''the incoming dataset is expected to have the following structure: user_a, user_b, distance''' 
   
@@ -146,7 +146,7 @@ def get_top_users( data ):
 
 # COMMAND ----------
 
-# DBTITLE 1,Initialize Output Table
+# DBTITLE 1,出力先のテーブルを初期化しておく
 _ = spark.sql('DROP TABLE IF EXISTS instacart.user_pairs')
 
 shutil.rmtree('/dbfs/mnt/instacart/gold/user_pairs', ignore_errors=True)
@@ -163,7 +163,7 @@ _ = spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate User-Pairs
+# DBTITLE 1,ユーザーペアの生成
 # retrieve hashed users
 b = (
   spark
@@ -225,7 +225,7 @@ print( 'Total pairs generated: {0}'.format(spark.table('instacart.user_pairs').c
 
 # COMMAND ----------
 
-# DBTITLE 1,Display User-Pairs
+# DBTITLE 1,ユーザーペアを確認
 display(
   spark.table('instacart.user_pairs')
   )
@@ -240,7 +240,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Product-Pair Similarities
+# DBTITLE 1,製品ペアの類似性を算出
 def compare_products( data ):
   '''
   the incoming dataset is expected to have the following structure:
@@ -330,7 +330,7 @@ product_pairs = (
 
 # COMMAND ----------
 
-# DBTITLE 1,Initialize Output Table
+# DBTITLE 1,出力先のテーブルを初期化しておく
 _ = spark.sql('DROP TABLE IF EXISTS instacart.product_pairs')
 
 shutil.rmtree('/dbfs/mnt/instacart/gold/product_pairs', ignore_errors=True)
@@ -348,7 +348,7 @@ _ = spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Product-Pairs to Disk
+# DBTITLE 1,プロダクトペアをDeltaに書き出す(永続化)
 # persist data for future use
 (
   product_pairs
@@ -401,7 +401,7 @@ display(
 
 # MAGIC %md # Step 2a: ユーザーベースのレコメンデーションを構築する
 # MAGIC 
-# MAGIC ユーザーペアが揃ったところで、次は実際のレコメンデーションの生成に入ります。 ほとんどの推薦シナリオでは、検索の速さが重要です。 同時に、データセット内のユーザーのうち何人が、データがアクティブである間にレコメンデーションエンジンを利用する可能性があるかを考慮する必要があります。レコメンデーションを利用するユーザーの数がデータセット内のユーザー総数に比べて少ない場合、レコメンデーションを動的に生成する（そしておそらく後で再利用するためにキャッシュする）ことを検討することができます。
+# MAGIC ユーザーペアが揃ったところで、次は実際のレコメンデーションの生成に入ります。 ほとんどのレコメンデーションのシナリオでは、検索の速さが重要です。 同時に、データセット内のユーザーのうち何人が、データがアクティブである間にレコメンデーションエンジンを利用する可能性があるかを考慮する必要があります。レコメンデーションを利用するユーザーの数がデータセット内のユーザー総数に比べて少ない場合、レコメンデーションを動的に生成する（そしておそらく後で再利用するためにキャッシュする）ことを検討することができます。
 # MAGIC 
 # MAGIC レコメンデーションを動的に生成するためには、リレーショナル・データベース・エンジンの採用が考えられます。 高いクエリー・パフォーマンスのSLAを満たすために、これらの技術で利用可能なパーティショニングやインデックス戦略を採用することができます。 また、データの一部を非正規化することで、一貫した検索速度を確保することができます。
 # MAGIC 
