@@ -350,7 +350,7 @@ display(
 
 # MAGIC %md # Step 2: 製品の *評価(Ratings)* を導き出す
 # MAGIC 
-# MAGIC 協調フィルタ（Collaborative Filter, CF）では、個々の製品に対するユーザーの好みを把握するための情報が必要になります。シナリオによっては、「5つ星のうち星3つ」のような明示的なユーザー評価が提供されることもあります。しかし、すべてのインタラクションに評価が付くわけではありません。また、多くのトランザクショナル・エンゲージメントでは、顧客にそのような評価を求めることができない場合が一般的です。このようなシナリオでは、製品の好みを示すために、他のユーザー生成データを使用することがあります。Instacartのデータセットの文脈では、ユーザーによる製品購入の頻度がそのような指標となるかもしれません。
+# MAGIC 協調フィルタ（Collaborative Filter, CF）では、個々の製品に対するユーザーの好みを把握するための情報が必要になります。シナリオによっては、「5つ星のうち星3つ」のような明示的なユーザー評価が提供されることもあります。しかし、すべてのインタラクションに評価が付くわけではありません。また、多くのトランザクショナル・エンゲージメントでは、顧客にそのような評価を求めることができない場合が一般的です。このようなシナリオでは、他の指標、つまり、ユーザーが生成した別の情報を使って、製品の「評価」として用いるアプローチをとります。Instacartのデータセットの文脈では、ユーザーによる製品購入の頻度がその指標として使用できます。
 
 # COMMAND ----------
 
@@ -406,8 +406,16 @@ display(
 
 # COMMAND ----------
 
+# DBTITLE 1,ユーザー別にある商品の「スケール済み購入回数」を算出
 # MAGIC %sql
 # MAGIC DROP VIEW IF EXISTS instacart.user_ratings;
+# MAGIC 
+# MAGIC -- 解説: ここでは、以下のような「スケール済み購入回数」を算出している
+# MAGIC --  あるユーザーが製品A, B, Cをそれぞれ3, 4, 5回購入した場合、
+# MAGIC --  * 全体のL2ノルム(の平方)は root(3^2 + 4^2 +5^2) = root(50) = 7.07
+# MAGIC --  * このユーザーの製品Aのスケール済み購入回数(normalized_purchases)は、3/7.07 = 0.424
+# MAGIC --  * 同様にこのユーザーの製品B, Cのスケール済み購入回数(normalized_purchases)は、4/7.07 = 0.566, 5/7.07 = 0.707
+# MAGIC -- (今後は、上記を"user_ratings"とする)
 # MAGIC 
 # MAGIC CREATE VIEW instacart.user_ratings 
 # MAGIC AS
@@ -440,6 +448,7 @@ display(
 # MAGIC     ) b
 # MAGIC     ON a.user_id=b.user_id AND a.split=b.split;
 # MAGIC   
+# MAGIC -- 上記で作成したviewの確認
 # MAGIC SELECT * FROM instacart.user_ratings ORDER BY user_id, split, product_id;
 
 # COMMAND ----------
@@ -464,8 +473,14 @@ display(
 
 # COMMAND ----------
 
+# DBTITLE 1,ユーザー識別せずに、ある商品の「スケール済み購入回数」を算出
 # MAGIC %sql
 # MAGIC DROP VIEW IF EXISTS instacart.naive_ratings;
+# MAGIC 
+# MAGIC -- 解説: 先ほどはユーザーごとに、その人の商品購入回数から「スケール済み購入回数」を算出した。
+# MAGIC --      今回は、ユーザーごとではなく、全体の商品の購入回数を使って、「スケール済み購入回数」を算出してみる。
+# MAGIC --      つまり、全ユーザーが購入した回数が多い(もっとも売れた)商品の「スケール済み購入回数」が一番大きくなる。
+# MAGIC -- (今後は、上記を"native_ratings"とする。)
 # MAGIC 
 # MAGIC CREATE VIEW instacart.naive_ratings 
 # MAGIC AS
@@ -496,3 +511,7 @@ display(
 # MAGIC     ON a.split=b.split;
 # MAGIC   
 # MAGIC SELECT * FROM instacart.naive_ratings ORDER BY split, product_id;
+
+# COMMAND ----------
+
+
