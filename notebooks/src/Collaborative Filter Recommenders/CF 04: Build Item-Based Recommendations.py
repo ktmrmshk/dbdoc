@@ -386,8 +386,9 @@ display(
 # MAGIC %sql
 # MAGIC 
 # MAGIC -- 解説: ユーザー#148に対して、製品#55のレコメンデーションスコアの算出を考える
-# MAGIC --       前提1: ユーザー#148が製品#11, #22, #33を購入したとする。よって、このユーザー#148による、この3つの製品の「スケール済み製品の評価」があり、それぞれ0.01, 0.02, 0.03とする。
-# MAGIC --       前提2: 製品#55-#11ペア、#55-#11ペア、#55-#33ペアの購入ユーザーが存在する。よって、このペア製品間距離(類似度)があリ、それぞれ0.4, 0.3, 0.2とする。
+# MAGIC --       前提1: ユーザー#148は製品#55を購入したことがない。よって、この製品#55のユーザー#148による「スケール済み製品の評価」は存在しない。
+# MAGIC --       前提2: ユーザー#148が製品#11, #22, #33を購入したとする。よって、このユーザー#148による、この3つの製品の「スケール済み製品の評価」があり、それぞれ0.01, 0.02, 0.03とする。
+# MAGIC --       前提3: 製品#55-#11ペア、#55-#11ペア、#55-#33ペアの購入ユーザーが存在する。よって、このペア製品間距離(類似度)があリ、それぞれ0.4, 0.3, 0.2とする。
 # MAGIC --       
 # MAGIC --       この場合の「ユーザー#148に対して、製品#55のレコメンデーションスコア」は、
 # MAGIC --       ユーザーの「スケール済み購入評価」を重みにして、「製品の類似度」の加重平均、として評価する:
@@ -415,7 +416,7 @@ display(
 # MAGIC     x.split = 'calibration' AND x.user_id=148 -- <== user #148を抽出
 # MAGIC   GROUP BY x.user_id, y.product_b
 # MAGIC   )
-# MAGIC ORDER BY user_id, rank_ui
+# MAGIC ORDER BY user_id, rank_ui -- <== レコメンデーションスコアが高い順にソートしている
 
 # COMMAND ----------
 
@@ -430,6 +431,7 @@ display(
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS random_users;
 # MAGIC 
+# MAGIC -- user_ratingsから10%ランダムにユーザーを選ぶ
 # MAGIC CREATE TEMP VIEW random_users 
 # MAGIC AS
 # MAGIC   SELECT user_id
@@ -439,9 +441,12 @@ display(
 # MAGIC     FROM instacart.user_ratings
 # MAGIC     ) 
 # MAGIC   WHERE rand() <= 0.10;
-# MAGIC   
+# MAGIC 
+# MAGIC 
+# MAGIC -- テーブルをキャッシュしておく
 # MAGIC CACHE TABLE random_users;
 # MAGIC 
+# MAGIC -- ランダムに選ばれたユーザーを確認する
 # MAGIC SELECT * FROM random_users;
 
 # COMMAND ----------
@@ -453,13 +458,13 @@ eval_set = (
     SELECT 
       m.user_id,
       m.product_id,
-      m.r_t_ui,
+      m.r_t_ui, 
       n.rank_ui
     FROM (
       SELECT
         user_id,
         product_id,
-        normalized_purchases as r_t_ui
+        normalized_purchases as r_t_ui -- <== 評価・比べるために「スケールされた製品評価」も出しておく
       FROM instacart.user_ratings 
       WHERE split = 'evaluation' -- the test period
         ) m
@@ -468,16 +473,16 @@ eval_set = (
         user_id,
         product_id,
         recommendation_score,
-        PERCENT_RANK() OVER (PARTITION BY user_id ORDER BY recommendation_score DESC) as rank_ui
+        PERCENT_RANK() OVER (PARTITION BY user_id ORDER BY recommendation_score DESC) as rank_ui  -- <== パーセントランク化
       FROM (
         SELECT
           x.user_id,
           y.product_b as product_id,
-          SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score
+          SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score  -- <==先ほどと同様にレコメンデーションスコアを算出
         FROM instacart.user_ratings x
         INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
           ON x.product_id=y.product_a
-        INNER JOIN random_users z
+        INNER JOIN random_users z   -- <== 上記でランダムに選ばれたユーザーだけに絞る
           ON x.user_id=z.user_id
         WHERE 
           x.split = 'calibration'
@@ -489,8 +494,8 @@ eval_set = (
   )
 
 display(
-  eval_set
-  .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') )
+  eval_set # <== 上記のクエリ結果
+  .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') ) # <= カラムを追加: r_t_ui =「スケール済み製品評価」
   .groupBy()
   .agg(
     sum('weighted_r').alias('numerator'),
@@ -524,6 +529,10 @@ _ = spark.sql("CACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`")
 
 results = []
 
+# 以下の2種類の閾値を設定してシミュレーションをする
+#
+# i <= 推奨スコアのランキング上位の閾値。 i=4の場合、レコメンデーションスコアで上位4つの製品のみをレコメンデーションの対象にする
+# j <= 製品ペアに紐づくユーザー数の下限閾値。j=3の場合、紐づくユーザーを3人以上を持つ製品ペアをレコメンレーションスコア算出に使用する
 for i in range(1,21,1):
   print('Starting size = {0}'.format(i))
   
