@@ -181,7 +181,7 @@ similar_d_users = (
   fitted_lsh.approxSimilarityJoin(
     user_148,
     hashed_vectors,  
-    threshold = max_distance_from_target, 
+    threshold = max_distance_from_target, # <== 距離の最大
     distCol='distance'
   )
   .selectExpr('datasetA.user_id as user_a', 'datasetB.user_id as user_b', 'distance')
@@ -588,7 +588,7 @@ eval_set = (
         product_id,
         normalized_purchases as r_t_ui
       FROM instacart.user_ratings 
-      WHERE split = 'evaluation' -- the test period
+      WHERE split = 'evaluation' -- テスト期間のデータ
         ) x
     INNER JOIN (
       SELECT
@@ -603,7 +603,7 @@ eval_set = (
 
 display(
   eval_set
-    .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') )
+    .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') ) # <== 購入回数によるレコメンデーションスコアの加重平均。実際にレコメンデーションされたものがどのくらい購入されたのかを評価する。
     .groupBy()
       .agg(
         sum('weighted_r').alias('numerator'),
@@ -616,9 +616,9 @@ display(
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC 平均ランキングが低ければ低いほど、お客様は推奨製品リストの上位から製品を購入していることになります。 この指標を別の角度から考えると、スコアが低いほど、ユーザーが欲しいものを手に入れるためにかき分けなければならない*ジャンク*推奨品の数が少ないということになります。ここで返された値は、当社の推奨商品がお客様の購入に非常によくマッチしていることを示しており、これには正当な理由があると考えられます。
+# MAGIC 平均パーセントランクが低ければ低いほど、ユーザーは推奨製品リストの上位から製品を購入していることになります。 この指標を別の角度から考えると、スコアが低いほど、ユーザーが欲しいものを手に入れるためにかき分けなければならない*ジャンク*推奨品の数が少ないということになります。ここで返された値は、当社の推奨商品がお客様の購入に非常によくマッチしていることを示しており、これには正当な理由があると考えられます。
 # MAGIC 
-# MAGIC 評価を作成する際に、ユーザーの暗黙の評価を混ぜることにしました。 つまり、ユーザーが過去に好みを表明した商品は、他の商品よりもおすすめ度が高くなるのです。 お客様が商品を繰り返し購入するパターンが多い食料品店では、お客様が欲しいものを手に入れて取引を完了することが目的である場合は、この方法が有効です。
+# MAGIC 今回は、評価を作成する際に、そのユーザー自身の暗黙の評価を含んでいます。つまり、ユーザーが過去に好みを表明した商品は、他の商品よりもおすすめ度が高くなるのです。ユーザーが商品を繰り返し購入するパターンが多い食料品店では、「お客様が欲しいものを手に入れて取引を完了する」ことが目的である場合は、この方法が有効です。
 # MAGIC 
 # MAGIC しかし、食料品に限らず、レコメンデーションの手法は常に正しいのでしょうか？ 例えば、クラフトビールのように、目新しさや驚きが評価される商品カテゴリーの場合。過去に購入されたことのある商品を勧めるだけでは、お客様に多様性や魅力に欠けると感じられてしまうかもしれません。 どんなに優れた指標があっても、目標とその評価方法を慎重に検討する必要があります。
 # MAGIC 
@@ -627,7 +627,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,人気のある商品の推奨ランク
+# DBTITLE 1,人気のある商品の推奨ランク(ユーザーを識別しない)
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -649,7 +649,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,人気のある製品の推薦を評価する
+# DBTITLE 1,人気のある製品の推薦を評価する(ユーザーを識別しない)
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT

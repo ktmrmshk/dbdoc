@@ -946,7 +946,7 @@ for i, lsh_tables in enumerate(range(1,11)):
     BucketedRandomProjectionLSH(
     inputCol = 'ratings', 
     outputCol = 'hash', 
-    numHashTables = lsh_tables, 
+    numHashTables = lsh_tables,  # <==== ここでLSHテーブル数を設定
     bucketLength = bucket_length
     )]
 
@@ -959,7 +959,7 @@ for i, lsh_tables in enumerate(range(1,11)):
     .transform(ratings_vectors)    
   )]
 
-  # LSHアルゴリズムに含まれる`approxNearestNeighbors()`を使用して、ユーザー#148の近傍にいる100人をピックアップ
+  # LSHアルゴリズムに含まれる`approxNearestNeighbors()`を使用して、ユーザー#148の近傍にいる100人の距離を計算
   temp_results += [(
     
     temp_fitted_lsh[i].approxNearestNeighbors(
