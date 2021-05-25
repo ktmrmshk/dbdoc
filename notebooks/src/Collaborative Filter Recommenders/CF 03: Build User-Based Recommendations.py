@@ -136,6 +136,8 @@ user_148.collect()[0]['ratings']
 # MAGIC 
 # MAGIC この *一番近い隣人* のアプローチは、評価を構築するための一貫した数のユーザーを返すという利点がありますが、それらのユーザーと我々の与えられたユーザーとの間の類似性は変化する可能性があります。
 # MAGIC 
+# MAGIC (距離に関係なく、自分の近くにいる何人目までの人をピックアップする。人数で指定。自分が、非常にクセがあって、近くに他のユーザーがいない場合でも、必ず指定した人数の結果は得られる。)
+# MAGIC 
 # MAGIC **注意** 指定したユーザー自身、つまりこの例では`user_id=148`自身も結果セットに含まれます。よって、10人の*他の*ユーザーを検索したい場合は、11人の最近傍のユーザーを指定し、その後で、結果から自分のユーザーを除外する必要があります。
 
 # COMMAND ----------
@@ -161,6 +163,7 @@ display(similar_k_users)
 # MAGIC %md 
 # MAGIC 類似したユーザーを特定する問題に取り組むもう一つの方法は、与えられたユーザーからの最大距離を定義し、その範囲内のすべてのユーザーを選択することです。
 # MAGIC 
+# MAGIC (自分に近い人数ではなく、自分からの距離で閾値を決める。)
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_distance.gif" width="400">
 # MAGIC 
@@ -253,7 +256,7 @@ display(similar_users)
 
 # COMMAND ----------
 
-# DBTITLE 1,類似ユーザーによる製品評価
+# DBTITLE 1,ユーザー#148の近傍(類似)ユーザーによる製品評価
 # 類似ユーザーによる製品評価を製品毎にリスト。
 # もし類似ユーザーがその製品の評価値を持っていない場合は0を使う。
 similar_ratings = spark.sql('''
@@ -262,7 +265,7 @@ similar_ratings = spark.sql('''
         m.product_id,
         COALESCE(n.normalized_purchases, 0.0) as normalized_purchases,
         m.similarity_rescaled
-      FROM ( -- get complete list of products across similar users
+      FROM ( -- ユーザー#148の近傍10人に対して、全てのproduct_idを持たせておく(product_idでcross join)
         SELECT
           x.user_id,
           y.product_id,
@@ -273,14 +276,14 @@ similar_ratings = spark.sql('''
           ) x
         CROSS JOIN instacart.products y
         ) m
-      LEFT OUTER JOIN ( -- retrieve ratings actually provided by similar users
+      LEFT OUTER JOIN ( -- 近傍の10人の評価したproduct_idとその評価値を参照する
         SELECT x.user_id, x.product_id, x.normalized_purchases 
         FROM instacart.user_ratings x 
         LEFT SEMI JOIN similar_users y 
           ON x.user_id=y.user_id 
         WHERE x.split = 'calibration'
           ) n
-        ON m.user_id=n.user_id AND m.product_id=n.product_id
+        ON m.user_id=n.user_id AND m.product_id=n.product_id 
       ''')
 
 display(similar_ratings)
@@ -291,14 +294,18 @@ display(similar_ratings)
 # MAGIC 
 # MAGIC これらの評価と類似性スコアを用いて、類似したユーザーからの製品評価の加重平均を算出することができます。
 # MAGIC 
-# MAGIC (式の意味: 注目するユーザー(`user_id=148`)について、ある製品の推奨スコア:= 類似ユーザーによる製品評価をその類似ユーザーの「近さ(類似度)」で重みづけした加算平均)
+# MAGIC **式の意味:**
+# MAGIC 
+# MAGIC * (左辺): 注目するユーザー(`user_id=148`)について、ある製品の推奨スコア
+# MAGIC * (右辺): 類似ユーザーによる製品評価をその類似ユーザーの「近さ(類似度)」で重みづけした加算平均)
+# MAGIC 
+# MAGIC つまり、自分に近いユーザーの評価をより重視することになる。ある製品について、自分から遠くにいるユーザーからの評価が非常に良くても、あまり意味がない。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_ratingcalc.png" width="600">
 
 # COMMAND ----------
 
 # DBTITLE 1,推奨スコアを計算
-
 product_ratings = ( 
   similar_ratings
   .groupBy('product_id')
@@ -382,7 +389,7 @@ display(product_ratings_for_user)
 # MAGIC 
 # MAGIC オフライン評価のための代理目標を定義する際には、レコメンドスコアが何を表しているのかをよく考えてみるとよいでしょう。 これらのワークブックで紹介されているシナリオでは、私たちのスコアは、リピート購入から得られる暗黙の評価の加重平均値です。 [Hu, Koren & Volinsky](http://yifanhu.net/PUB/cf.pdf)は、消費から得られる暗黙の評価について非常に優れた研究を行っています。彼らの研究はメディアに焦点を当てていますが、ランキング・メカニズムとしてのスコアについての彼らのアイデアに便乗して、ユーザーが反応したランキング内の平均的な位置という観点からレコメンダーを評価することができます。 この指標は、レコメンダーが顧客が最終的に購入するものと一致しているかどうかをオフラインで確認するのに役立ちます。
 # MAGIC 
-# MAGIC しかし、その前に、評価を行うためのレコメンデーションを作成する必要があります。 データセットに含まれるすべてのユーザーに対するレコメンデーションを計算するのは大変なので、ここではランダムに抽出されたユーザーに限定して評価を行います。
+# MAGIC しかし、その前に、評価を行うためのレコメンデーションを作成する必要があります。 **データセットに含まれるすべてのユーザーに対するレコメンデーションを計算するのは大変なので、ここではランダムに抽出されたユーザーに限定して評価を行います。**
 # MAGIC 
 # MAGIC **注意** 評価対象をごく一部のお客様に限定した場合でも、以下のステップは計算量が多くなります。シャッフル・パーティション・カウントは、使用しているクラスターのサイズに合わせて調整しました。 この方法やその他のパフォーマンスチューニングメカニズムの詳細については、[このドキュメント](https://docs.microsoft.com/en-us/azure/architecture/databricks-monitoring/performance-troubleshooting#common-performance-bottlenecks)を参照してください。
 
@@ -391,6 +398,10 @@ display(product_ratings_for_user)
 # DBTITLE 1,シャッフルパーティション数を変更する
 max_partition_count = sc.defaultParallelism * 100
 spark.conf.set('spark.sql.shuffle.partitions', max_partition_count) 
+
+# COMMAND ----------
+
+display(hashed_vectors)
 
 # COMMAND ----------
 
@@ -410,7 +421,7 @@ shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/similarity_results', ignore_errors=T
 # perform similarity join for sample of users
 sample_comparisons = (
   fitted_lsh.approxSimilarityJoin(
-    hashed_vectors.sample(withReplacement=False, fraction=sample_fraction), # use a random sample for our target users
+    hashed_vectors.sample(withReplacement=False, fraction=sample_fraction), # <==　ここでユーザーをランダムにピックアップしている
     hashed_vectors,
     threshold = max_distance,
     distCol = 'distance'
@@ -424,7 +435,7 @@ sample_comparisons = (
     )  
 )
 
-# write output for reuse
+# 再利用するためにDeltaに書き込む
 (
   sample_comparisons
     .write
@@ -460,10 +471,10 @@ similar_users =  (
           user_a,
           user_b,
           similarity,
-          ROW_NUMBER() OVER (PARTITION BY user_a ORDER BY similarity DESC) as seq
+          ROW_NUMBER() OVER (PARTITION BY user_a ORDER BY similarity DESC) as seq -- <== ここで類似度順になれべている。
         FROM DELTA.`/tmp/mnt/instacart/gold/similarity_results`
         )
-      WHERE seq <= {0}
+      WHERE seq <= {0}      -- <== ここで類似度の高いxx人をピックアップする条件をつけている
       '''.format(number_of_customers)
       )
     )
@@ -528,7 +539,7 @@ product_ratings.createOrReplaceTempView('product_ratings')
 
 display(
   product_ratings
-  )  
+)  
 
 # COMMAND ----------
 
@@ -537,14 +548,14 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Convert Recommendations to Percent Ranks
+# DBTITLE 1,推奨値をパーセントランク(percentile形式)に変換する
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
 # MAGIC   user_a as user_id,
 # MAGIC   product_id,
 # MAGIC   recommendation_score,
-# MAGIC   PERCENT_RANK() OVER (PARTITION BY user_a ORDER BY recommendation_score DESC) as rank_ui
+# MAGIC   PERCENT_RANK() OVER (PARTITION BY user_a ORDER BY recommendation_score DESC) as rank_ui -- <== ここでPercent Rankを割り当てている
 # MAGIC FROM product_ratings
 # MAGIC ORDER BY user_a, recommendation_score DESC
 
