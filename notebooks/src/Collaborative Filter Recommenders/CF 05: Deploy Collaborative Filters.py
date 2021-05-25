@@ -420,7 +420,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Define View for User-Based Recommendations
+# DBTITLE 1,ユーザーベースのレコメンデーションのviewを作成
 # MAGIC %sql
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS instacart.user_based_recommendations;
@@ -459,7 +459,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Cache Objects
+# DBTITLE 1,テーブルのキャッシュ化
 # MAGIC %sql 
 # MAGIC 
 # MAGIC CACHE TABLE cached__user_ratings AS 
@@ -473,7 +473,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Make Recommendations
+# DBTITLE 1,レコメンデーションの実施(ユーザーベース)
 # MAGIC %sql 
 # MAGIC   SELECT * 
 # MAGIC   FROM instacart.user_based_recommendations 
@@ -488,7 +488,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Release Cached Objects
+# DBTITLE 1,キャッシュの解放
 # MAGIC %sql 
 # MAGIC UNCACHE TABLE cached__user_ratings;
 # MAGIC UNCACHE TABLE cached__products
@@ -507,7 +507,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Define View for Item-Based Recommendations
+# DBTITLE 1,アイテムベースのレコメンデーションのviewを作成
 # MAGIC %sql
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS instacart.item_based_recommendations;
@@ -540,7 +540,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Cache Objects
+# DBTITLE 1,テーブルのキャッシュ化
 # MAGIC %sql 
 # MAGIC 
 # MAGIC CACHE TABLE cached__user_ratings AS 
@@ -550,7 +550,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Make Recommendations
+# DBTITLE 1,リコメンデーションの実施(アイテムベース)
 # MAGIC %sql 
 # MAGIC   SELECT * 
 # MAGIC   FROM instacart.item_based_recommendations 
@@ -559,7 +559,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Release Cached Objects
+# DBTITLE 1,キャッシュのリリース
 # MAGIC %sql UNCACHE TABLE cached__user_ratings;
 
 # COMMAND ----------
