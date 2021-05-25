@@ -378,6 +378,11 @@ display(
 # DBTITLE 1,評価値をスパースベクタに変換する関数を定義
 @udf(VectorUDT())
 def to_vector(size, index_list, value_list):
+    '''
+    各ユーザーが持っている製品リストとその評価値リストを入力として、
+    そのスパースベクタ形式を返す、
+    処理
+    '''
     
     # indexで各ペアをsortしておく
     ind, val = zip(*sorted(zip(index_list, value_list)))
@@ -395,19 +400,19 @@ _ = spark.udf.register('to_vector', to_vector)
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザーベクターの準備 (by SQL)
+# DBTITLE 1,"user_ratings"をスパースベクター化する(by SQL)
 # MAGIC %sql
 # MAGIC 
-# MAGIC SELECT  -- convert lists into vectors
+# MAGIC SELECT
 # MAGIC   user_id,
-# MAGIC   to_vector(size, index_list, value_list) as ratings
+# MAGIC   to_vector(size, index_list, value_list) as ratings -- <== 先ほど定義した関数を適用し、スパースベクトル形式に変換する
 # MAGIC FROM ( -- aggregate product IDs and ratings into lists
 # MAGIC   SELECT
 # MAGIC     user_id,
 # MAGIC     (SELECT MAX(product_id) FROM instacart.products) + 1 as size,
-# MAGIC     COLLECT_LIST(product_id) as index_list,
+# MAGIC     COLLECT_LIST(product_id) as index_list, -- <== 先ほどと同様に複数行をリストにして、1行内に埋め込む
 # MAGIC     COLLECT_LIST(normalized_purchases) as value_list
-# MAGIC   FROM ( -- all users, ratings
+# MAGIC   FROM ( -- キャリブレーション期間のデータの全てのユーザー
 # MAGIC     SELECT
 # MAGIC       user_id,
 # MAGIC       product_id,
@@ -420,7 +425,7 @@ _ = spark.udf.register('to_vector', to_vector)
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザーベクターの準備 (by Python)
+# DBTITLE 1,"user_ratings"をスパースベクター化する(by Python)
 # assemble user ratings
 user_ratings = (
   spark
@@ -474,9 +479,10 @@ display(ratings_vectors)
 # COMMAND ----------
 
 # DBTITLE 1,LSHバケツを割り当てる(bucketLength=1)
-bucket_length = 1
-lsh_tables = 1
+bucket_length = 1  # <== 一つのLSHテーブル内におけるバケツの長さ(意味的にはバケツ分割数、後に詳細があります。)
+lsh_tables = 1 # <== テーブル数
 
+# LSHのインスタンス化
 lsh = BucketedRandomProjectionLSH(
   inputCol = 'ratings', 
   outputCol = 'hash', 
@@ -484,10 +490,10 @@ lsh = BucketedRandomProjectionLSH(
   bucketLength = bucket_length
   )
 
-# アルゴリズムをDatasetにfitさせる
+# アルゴリズムをDatasetにfitさせる (機械学習アルゴリズムと同様の扱い)
 fitted_lsh = lsh.fit(ratings_vectors)
 
-# LSHバケツをユーザーにアサインする
+# LSHバケツをユーザーにアサインする (上記アルゴリズムを適用し、データを変換)
 hashed_vectors = (
   fitted_lsh
   .transform(ratings_vectors)  
@@ -509,7 +515,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,LSHバケツ割り当て結果を可視化する
+# DBTITLE 1,LSHバケツ割り当て結果を可視化する --(bucketLength=1の場合)
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
@@ -535,7 +541,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,バケツ毎のユーザー数
+# DBTITLE 1,バケツ毎のユーザー数(サマリの数)  --(bucketLength=1の場合)
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
@@ -566,8 +572,11 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザー比較数(計算回数)
+# DBTITLE 1,ユーザー比較数(計算回数) - (bucketLength=1の場合)
 # MAGIC %sql
+# MAGIC 
+# MAGIC -- バケツに分割したので、ユーザーペアの総当たり比較数が減るはずです。
+# MAGIC -- ここでは、どこのくらいに減ったのかを確認しています。
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
 # MAGIC   SELECT
@@ -632,7 +641,7 @@ hashed_vectors.createOrReplaceTempView('hashed_vectors')
 
 # COMMAND ----------
 
-# DBTITLE 1,バケツ毎のユーザ数
+# DBTITLE 1,バケツ毎のユーザ数 --(bucketLength=0.001の場合)
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
@@ -655,10 +664,12 @@ hashed_vectors.createOrReplaceTempView('hashed_vectors')
 # MAGIC FROM user_comparisons x
 # MAGIC GROUP BY x.htable, x.bucket
 # MAGIC ORDER BY htable, bucket
+# MAGIC 
+# MAGIC -- したの結果を見ると、バケツ#-1, #-2がもっともユーザーを多く持つバケツであることがわかる。
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザー比較の回数(計算回数)
+# DBTITLE 1,ユーザー比較の回数(計算回数) --(bucketLength=0.001の場合)
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
@@ -702,7 +713,7 @@ hashed_vectors.createOrReplaceTempView('hashed_vectors')
 # MAGIC 
 # MAGIC しかし、`bucketLength`に話を戻すと、その値を下げるとバケット数が増えることがわかります。各バケットには、全体の超次元空間を分割するために生成された様々な超平面の間の空間に存在するユーザーが集められます。各超平面はランダムに生成されるので、バケット数を増やすことで、ランダムな超平面の数が増え、よく似た2人のユーザーが別々のバケットに分けられる可能性が高くなります。
 # MAGIC 
-# MAGIC この問題を解決するコツは、ユーザーをバケットに分割する作業を複数回行うことです。 それぞれの順列は、独立した別の *hash table* を生成するために使用されます。似たようなユーザーが別々のバケットに分割されるという問題は残りますが、2人の似たようなユーザーが、異なる（独立した）ハッシュテーブルで繰り返し別々のバケットに分割される確率は低くなります。 また、生成されたいずれかのハッシュテーブルにおいて、2人のユーザーが同じバケットに存在する場合、そのバケットは比較の対象となります。
+# MAGIC この問題を解決するコツは、ユーザーをバケットに分割する作業を複数回行うことです。 それぞれの分割の試行において、「順列組み合わせ」を使用して独立した *hash table* を生成していきます。似たようなユーザーが別々のバケットに分割されるという問題は残りますが、2人の似たようなユーザーが、異なる（独立した）ハッシュテーブルで繰り返し別々のバケットに分割される確率は低くなります。 また、生成されたいずれかのハッシュテーブルにおいて、2人のユーザーが同じバケットに存在する場合、そのバケットは比較の対象となります。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/lsh_hash03x.png' width='600'>
 # MAGIC 
@@ -739,7 +750,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,ハッシュテーブル/バケツ毎のユーザー数
+# DBTITLE 1,ハッシュテーブル/バケツ毎のユーザー数(bucketLength=0.001, numHashTables=3)
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
@@ -765,7 +776,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,ユーザー比較の回数
+# DBTITLE 1,ユーザー比較の回数(bucketLength=0.001, numHashTables=3)
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH user_comparisons AS (
@@ -807,12 +818,15 @@ display(
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC そして、ユーザー148のブルートフォース評価（他の200,000人のユーザーすべてに対して）です。
+# MAGIC 
+# MAGIC (実際にLSH化(バケツ化)した後の結果と、従来のブルートフォースの結果はどの程度違うのかを確認するために、)
+# MAGIC 
+# MAGIC それでは、ユーザー#148に注目して、対他のユーザー(200,000人)との距離を評価してみましょう(他の200,000人のユーザーすべてに対してのブルートフォース評価)。
 
 # COMMAND ----------
 
-# DBTITLE 1,テストユーザーの網羅的な類似度の算出
-# ratings for all users
+# DBTITLE 1,テストユーザー(#148)の総当たり方式での距離の算出
+# 毎度になりますが、キャリブレーション期間のuser_ratingsを用意しておく(行を圧縮した状態で)
 ratings = (
   spark
     .sql('''
@@ -832,16 +846,16 @@ ratings = (
       ''')
   )
 
-# assemble user A data
+# ここで ユーザー#148だけに絞っておく
 ratings_a = (            
   ratings
-  .filter(ratings.user_id == 148) # limit to user 148
+  .filter(ratings.user_id == 148) # limit to user# 148 
   .withColumnRenamed('user_id', 'user_a')
   .withColumnRenamed('products_list', 'indices_a')
   .withColumnRenamed('ratings_list', 'values_a')
 )
 
-# assemble user B data
+# もう一方のテーブルは全ユーザーにしておく
 ratings_b = (
   ratings
   .withColumnRenamed('user_id', 'user_b')
@@ -849,19 +863,19 @@ ratings_b = (
   .withColumnRenamed('ratings_list', 'values_b')  
 )
 
-# calculate number of index positions required to hold product ids (add one to allow for index position 0)
+# スパースベクトル化のため、プロダクト数をサイズを調べておく
 size = spark.sql('''
   SELECT 1 + COUNT(DISTINCT product_id) as size 
   FROM instacart.products
 ''')
 
-# cross join to associate every user A with user B
+# ユーザー #148とユーザーb(その他のユーザー)のcross join
 a_to_b = (
   ratings_a
   .crossJoin(ratings_b)   
 ).crossJoin(size)
 
-# determine number of partitions per executor to keep partition count to 100,000 records or less
+# パーティションの調整(determine number of partitions per executor to keep partition count to 100,000 records or less)
 partitions_per_executor = 1 + int((a_to_b.count() / sc.defaultParallelism)/100000)
 
 # redistribute the user-to-user data and calculate similarities
@@ -904,10 +918,12 @@ user_148_vector
 
 # COMMAND ----------
 
-# DBTITLE 1,複数ハッシュテーブル化したLSHを用いて類似した隣人を特定する
+# DBTITLE 1,複数ハッシュテーブル化したLSHを用いて類似した隣人(距離の近いユーザー)を特定する
 bucket_length = 0.001
 
-# initialize results with brute force results
+# このセルではLSH化した場合のユーザー#148の隣人距離を計算する。
+# 前のセルで実施した単純総当たりアプローとの場合の隣人距離結果と比較するので、
+# その結果Dataframeを`results`に入れておき、このセルの結果をカラム追加して、比較する。
 results = brute_force
 
 # initialize objects within loops
@@ -918,6 +934,12 @@ temp_results = []
 
 # loop through lsh table counts 1 through 10 ...
 for i, lsh_tables in enumerate(range(1,11)):
+  '''
+  このループでは、
+  i          = 0, 1, 2, ..., 9
+  lsh_tables = 1, 2, 3, ..., 10
+  となる
+  '''
   
   # generate lsh hashes
   temp_lsh += [
