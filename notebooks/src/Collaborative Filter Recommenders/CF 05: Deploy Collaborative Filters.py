@@ -46,7 +46,7 @@ import shutil
 # MAGIC 
 # MAGIC ユーザーベースの協調フィルタ推薦を生成するための最初のステップは、各ユーザーの評価ベクトルを収集し、各ベクトルをLSHバケットに割り当てることです。 多くのソリューションでは、このようなステップは[パイプライン](https://spark.apache.org/docs/latest/ml-pipeline.html)として構成されますが、ここで想定しているバッチシナリオでは、スクリプトやノートブック内でコードを維持する方が簡単かもしれません。(LSHにパイプラインを採用する例として、最終的なコンテンツベースレコメンダーのノートブックを参照してください)
 # MAGIC 
-# MAGIC まず始めに、ソリューションの対象となるユーザーの詳細を取得する必要があります。ここでは、校正期間中のユーザーデータをすべて活用しています。 実際には、購買パターンの季節的変動を考慮し、推奨を行う将来の期間に関連する1つ以上の過去の期間のデータを使用して、このデータセットを制限することができます。
+# MAGIC まず始めに、ソリューションの対象となるユーザーの詳細を取得する必要があります。ここでは、キャリブレーション間中のユーザーデータをすべて活用しています。 実際には、購買パターンの季節的変動を考慮し、推奨を行う将来の期間に関連する1つ以上の過去の期間のデータを使用して、このデータセットを制限することができます。
 
 # COMMAND ----------
 
@@ -110,7 +110,7 @@ fitted_lsh = (
 user_features_bucketed = fitted_lsh.transform(user_features)
 
 # clean up any older copies of data
-shutil.rmtree('/dbfs/mnt/instacart/tmp/user_features', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/tmp/user_features', ignore_errors=True)
 
 # persist data for later use
 (
@@ -118,7 +118,7 @@ shutil.rmtree('/dbfs/mnt/instacart/tmp/user_features', ignore_errors=True)
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/tmp/user_features_bucketed')
+    .save('/tmp/mnt/instacart/tmp/user_features_bucketed')
   )
 
 # COMMAND ----------
@@ -127,7 +127,7 @@ shutil.rmtree('/dbfs/mnt/instacart/tmp/user_features', ignore_errors=True)
 # MAGIC 
 # MAGIC 前のセルの最後のステップでは、LSHでバケットされたデータをディスクに保存します。 これにより、長時間実行される次のステップの実行中に問題が発生した場合に、再起動するための一貫した基準を得ることができます。
 # MAGIC 
-# MAGIC 次のステップでは、`approxSimiliarityJoin()`を使用して、ユーザー集団のサブセットから特定の距離にいるユーザーを返します。閾値をかなり高く設定して多数のユーザを返すようにしますが、直近のクエリを実行して得られる結果を模して、最も類似した10人のユーザ（およびターゲット・ユーザ自身）に限定します。 データ検索の問題を、以前のノートブックで検討した`approxNearnestNeighbor()`メソッドではなく、この方法でアプローチしている理由は、類似性結合が複数のユーザーのデータを検索するために構築されているためであり（最近のネイバーズテクニックによる単一ユーザーの検索とは対照的です）、このアプローチは非常に高速です。
+# MAGIC 次のステップでは、`approxSimiliarityJoin()`を使用して、ユーザー集団のサブセットから特定の距離にいるユーザーを返します。閾値をかなり高く設定すれば多数のユーザを返すようにできますが、直近のクエリを実行して得られる結果に倣って、最も類似した10人のユーザ（およびターゲット・ユーザ自身）に限定します。 データ検索の問題を、以前のノートブックで検討した`approxNearnestNeighbor()`メソッドではなく、この方法でアプローチしている理由は、類似性結合が複数のユーザーのデータを検索するために構築されているためであり（最近のネイバーズテクニックによる単一ユーザーの検索とは対照的です）、このアプローチは非常に高速です。
 
 # COMMAND ----------
 
@@ -149,7 +149,7 @@ def get_top_users( data ):
 # DBTITLE 1,出力先のテーブルを初期化しておく
 _ = spark.sql('DROP TABLE IF EXISTS instacart.user_pairs')
 
-shutil.rmtree('/dbfs/mnt/instacart/gold/user_pairs', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/user_pairs', ignore_errors=True)
 
 _ = spark.sql('''
   CREATE TABLE instacart.user_pairs (
@@ -158,7 +158,7 @@ _ = spark.sql('''
     similarity double
     )
   USING delta
-  LOCATION '/mnt/instacart/gold/user_pairs'
+  LOCATION '/tmp/mnt/instacart/gold/user_pairs'
   ''')
 
 # COMMAND ----------
@@ -167,7 +167,7 @@ _ = spark.sql('''
 # retrieve hashed users
 b = (
   spark
-    .table('DELTA.`/mnt/instacart/tmp/user_features_bucketed`')
+    .table('DELTA.`/tmp/mnt/instacart/tmp/user_features_bucketed`')
   ).cache()
 
 max_user_per_cycle = 5000
@@ -182,7 +182,7 @@ while 1 > 0:
   # get users to generate pairs for
   a = (
     spark
-      .table('DELTA.`/mnt/instacart/tmp/user_features_bucketed`')
+      .table('DELTA.`/tmp/mnt/instacart/tmp/user_features_bucketed`')
       .join( spark.table('instacart.user_pairs'), on='user_id', how='left_anti')  # user_a not in user_pairs table
       .limit(max_user_per_cycle)
     )
@@ -217,7 +217,7 @@ while 1 > 0:
       .write
       .format('delta')
       .mode('append')
-      .save('/mnt/instacart/gold/user_pairs')
+      .save('/tmp/mnt/instacart/gold/user_pairs')
       )
 
 # print count of pairs
@@ -227,8 +227,8 @@ print( 'Total pairs generated: {0}'.format(spark.table('instacart.user_pairs').c
 
 # DBTITLE 1,ユーザーペアを確認
 display(
-  spark.table('instacart.user_pairs')
-  )
+  spark.table('instacart.user_pairs')  
+)
 
 # COMMAND ----------
 
@@ -333,7 +333,7 @@ product_pairs = (
 # DBTITLE 1,出力先のテーブルを初期化しておく
 _ = spark.sql('DROP TABLE IF EXISTS instacart.product_pairs')
 
-shutil.rmtree('/dbfs/mnt/instacart/gold/product_pairs', ignore_errors=True)
+shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_pairs', ignore_errors=True)
 
 _ = spark.sql('''
   CREATE TABLE instacart.product_pairs (
@@ -343,7 +343,7 @@ _ = spark.sql('''
     similarity double
     )
   USING delta
-  LOCATION '/mnt/instacart/gold/product_pairs'
+  LOCATION '/tmp/mnt/instacart/gold/product_pairs'
   ''')
 
 # COMMAND ----------
@@ -355,13 +355,13 @@ _ = spark.sql('''
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/mnt/instacart/gold/product_pairs')
+    .save('/tmp/mnt/instacart/gold/product_pairs')
   )
   
 # flip product A & product B
 (
   spark
-    .table('DELTA.`/mnt/instacart/gold/product_pairs`')
+    .table('DELTA.`/tmp/mnt/instacart/gold/product_pairs`')
     .selectExpr(
       'paired_product_id as product_id',
       'product_id as paired_product_id',
@@ -371,7 +371,7 @@ _ = spark.sql('''
     .write
     .format('delta')
     .mode('append')
-    .save('/mnt/instacart/gold/product_pairs')
+    .save('/tmp/mnt/instacart/gold/product_pairs')
   )
  
  # record entries for product A to product A (sim = 1.0)
@@ -390,7 +390,7 @@ _ = spark.sql('''
      .write
        .format('delta')
        .mode('append')
-       .save('/mnt/instacart/gold/product_pairs')
+       .save('/tmp/mnt/instacart/gold/product_pairs')
   )
    
 display(

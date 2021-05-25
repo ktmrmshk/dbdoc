@@ -451,6 +451,18 @@ display(
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC 
+# MAGIC SELECT count(*) FROM random_users;
+
+# COMMAND ----------
+
+_ = spark.sql("CACHE TABLE instacart.user_ratings")
+_ = spark.sql("CACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`")
+
+
+# COMMAND ----------
+
 # DBTITLE 1,評価メトリックを算出する(制約なし)
 eval_set = (
   spark
@@ -493,6 +505,9 @@ eval_set = (
       ''')
   )
 
+# COMMAND ----------
+
+# 結果を出力
 display(
   eval_set # <== 上記のクエリ結果
   .withColumn('weighted_r', col('r_t_ui') * col('rank_ui') ) # <= カラムを追加: r_t_ui =「スケール済み製品評価」
