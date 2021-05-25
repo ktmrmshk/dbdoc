@@ -3,7 +3,7 @@
 
 # COMMAND ----------
 
-# MAGIC %md The purpose of this notebook is to build and evaluate item-based collaborative filtering recommendations.  This notebook is designed to run on a **Databricks 7.1+ cluster**.
+# MAGIC %md このノートブックの目的は、ユーザーベースの協調フィルタの構築に向けて、類似したユーザーを効率的に特定する方法を探ることです。このノートブックは、**Databricks 7.1+ クラスタ**で動作するように設計されています。 
 
 # COMMAND ----------
 
@@ -25,7 +25,7 @@ import shutil
 
 # MAGIC %md # Step 1: 製品比較データセットの構築
 # MAGIC 
-# MAGIC ユーザーベースの協調フィルタを構築する際には、製品カタログに掲載されている約5万点の製品すべてに対する暗黙の評価を表すベクトルを、各ユーザーごとに構築する必要があります。 このベクトルをもとに、ユーザー間の類似性を計算します。 約200,000人のユーザーが参加するシステムでは、約200億通りのユーザー比較が発生しますが、これをロケール感度ハッシュを用いてショートカットしました。
+# MAGIC ユーザーベースの協調フィルタを構築する際には、製品カタログに掲載されている約5万点の製品すべてに対する暗黙の評価を表すベクトルを、各ユーザーごとに構築する必要があります。 このベクトルをもとに、ユーザー間の類似性を計算します。 約200,000人のユーザーが参加するシステムでは、約200億通りのユーザー比較が発生しますが、これをロケール感度ハッシュ(LSH)を用いてショートカットしました。
 # MAGIC 
 # MAGIC 
 # MAGIC しかし、このアプローチでは、あるユーザーが製品AとBを購入し、さらに製品Aを購入したユーザー、もしくは、製品Bを購入したユーザーが存在する場合にしか推薦ができない(推薦スコアが算出できない)ことになります。このことは、ユーザー間の重なり合う部分に焦点を当てて比較対象を限定するという、ユーザー由来の評価を使用する際の別のアプローチを提供します。
@@ -49,7 +49,7 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# DBTITLE 1,(補足) instacart.user_ratingsテーブルの内容
+# DBTITLE 1,(補足, 復習) instacart.user_ratingsテーブルの内容
 # MAGIC %sql 
 # MAGIC 
 # MAGIC select * from instacart.user_ratings
@@ -80,7 +80,7 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
-# DBTITLE 1,1組のユーザーペアから評価されているプロダクトの数
+# DBTITLE 1,(1組の)ユーザーペアから評価されているプロダクトの数
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT 
@@ -104,12 +104,12 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC われわれの製品カタログには約5万点の製品が掲載されており、理論的には12億5000万のユニークな製品ペアを提供することができますが、実際に観測された共起の数（複数の顧客が関与している場合）は5600万に近く、理論的な数の10分の1以下となっています。実際に発生している製品ペアに焦点を当てることで、関連性のある可能性のあるものに限定して計算し、問題の複雑さを大幅に軽減することができます。これが、アイテムベースの協調フィルタリングの背景にある[コアインサイト](https://www.cs.umd.edu/~samir/498/Amazon-Recommendations.pdf)です。
+# MAGIC われわれの製品カタログには約5万点の製品が掲載されており、理論的には12億5000万のユニークな製品ペアを提供することができますが、実際に観測された共起の数（複数の顧客が関与している場合）は5600万点程度になっており、理論的な数の10分の1以下となっています。実際に実績のある製品ペアに焦点を当てることで、関連性のあるものに限定して計算し、問題の複雑さを大幅に軽減することができます。これが、アイテムベースの協調フィルタリングの背景にある[コアインサイト](https://www.cs.umd.edu/~samir/498/Amazon-Recommendations.pdf)です。
 # MAGIC 
 # MAGIC しかし、このシナリオでは、具体的にどのように製品を比較すればよいのでしょうか。前回の協調フィルタでは、約5万点の製品それぞれのエントリを含む特徴ベクトルを構築しました。 これを逆にすると、20万人以上のユーザーそれぞれのエントリを含む特徴ベクトルを構築するべきでしょうか。
 # MAGIC 
 # MAGIC 
-# MAGIC 短い答えは、「いいえ」です。 長い答えは、ある製品の比較は、ユーザーがペアの両方の製品を購入しているために行われるということです。 その結果、製品ペアに関連付けられた各ユーザーは、評価の両サイドに暗黙の評価を提供します。しかし、ほとんどの製品ペアは、それに関連する顧客の数が限られています。
+# MAGIC 短い答えは、「いいえ」です。 長い答えは、製品の比較は、ある製品ペアを一人のユーザーが両方購入した事実に基づいて評価を実施すると言うことで于S。ユーザーがということです。 その結果、製品ペアに関連付けられた各ユーザーは、評価の両サイドに暗黙の評価を提供します。しかし、ほとんどの製品ペアは、それに関連するユーザーの数が限られています。
 
 # COMMAND ----------
 
@@ -139,19 +139,20 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC 与えられた製品の組み合わせを購入したことのあるユーザーの最大が30,000未満で、それが一度だけ発生しているのは驚きです。 このような極端なケースを懸念するのであれば、ペアに関連するユーザー数が一定の比率を超えた時点で、考慮するユーザー評価をすべての利用可能な評価のランダムサンプリングに制限することができます（このアイデアは、上記のAmazonの論文から直接得られたものです）。しかし、ほとんどの組み合わせは非常に少数のユーザー間でしか発生しないため、各ペアに対して、製品の類似性を測定するための適度なサイズの特徴ベクトルを構築するだけでよいのです。 
+# MAGIC ある製品の組み合わせを(同時に)購入したユーザーの数(分布)を調べるとの最大が約30,000で、かつ、1つケースしかないと言う点は驚きです。 このような極端なケースを懸念するのであれば、ある製品ペアに紐づくユーザー数が一定の比率を超えた時点で、その製品評価に使用するユーザーをランダムサンプリングして制限するアプローチを使います（このアイデアは、上記のAmazonの論文から直接得られたものです）。しかし、ほとんどの組み合わせは非常に少数のユーザー間でしか発生しないため、各ペアに対して、製品の類似性を測定するための適度なサイズの特徴ベクトルを構築するだけでよいのです。 
 # MAGIC 
-# MAGIC このことから、ある疑問が生まれました。それは、少数のユーザーに関連する製品ペアを考慮すべきかということです。 2人、3人、あるいはその他の些細な数のユーザーが購入した組み合わせを含めた場合、一般的には考慮されないような製品をレコメンデーションに導入することになるのでしょうか？目的に応じて、珍しい商品の組み合わせを含めることは、良いことでもあり、悪いことでもあります。 目新しさや驚きが一般的な目的ではない食料品を扱う場合、共起が少なすぎる商品を除外することは理にかなっていると思われます。後半で、カットオフ値を正確に決定する作業を行いますが、今は、とりあえずここでは製品ベクトルを構築して、notebookを進めましょう。
+# MAGIC このことから、ある疑問が生じます。それは、少数のユーザーにしか購入されなかった製品ペア(少数のユーザーしか紐づかない製品ペア)をどう扱うべきか、というものです。2人、3人程度の少数ユーザーのみが購入した製品組み合わせを含めた場合、一般的には考慮されないような製品をレコメンデーションに導入することになるのでしょうか？目的によっては、珍しい商品の組み合わせを含めることは、良いことでもあり、悪いことでもあります。 目新しさや驚きが一般的な目的ではない食料品を扱う場合、共起が少なすぎる商品を除外することは理にかなっていると思われます。後半で、カットオフ値を正確に決定する作業を行いますが、今は、とりあえずここでは製品ベクトルを構築して、notebookを進めましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,製品の類似性を計算する
+# DBTITLE 1,製品の類似性を計算する(Part-1)
 def compare_products( data ):
   '''
   引数`data`は以下のカラムのdataframe構成になっている想定:
      => (product_a, product_b, size, values_a, values_b)
   '''
   
+  # ベクトルの正規化
   def normalize_vector(v):
     norm = Vectors.norm(v, 2)
     ret = v.copy()
@@ -170,18 +171,18 @@ def compare_products( data ):
     # 入力のデータセットをほどく
     # -----------------------------------------------------------
     product_a = row.product_a
-    values_a = row.values_a
+    values_a = row.values_a # <== 製品の「評価」値はユーザーの「スケール済み購入回数」に基づく(下のSQLを参照)
     
     product_b = row.product_b
     values_b = row.values_b
     
-    size = row.size # this value is not used but is simply passed-through
+    size = row.size # あとでスパースベクトル化するときに必要
     # -----------------------------------------------------------
     
-    # construct data structures for user comparisons
+    # 製品評価値(value_a, b)を正規化(リスケール)させておく
     # -----------------------------------------------------------
-    a = Vectors.dense(values_a)
-    a_norm = normalize_vector(a)
+    a = Vectors.dense(values_a) 
+    a_norm = normalize_vector(a) # <== 全ユーザーからの評価を正規化した値を最終的な製品の評価として使う
     
     b = Vectors.dense(values_b)
     b_norm = normalize_vector(b)
@@ -208,7 +209,7 @@ def compare_products( data ):
   return pd.DataFrame(results)
 
 
-# 比較のため、それぞれの製品のユーザー評価を構成する
+# 比較のため、それぞれの製品のユーザー評価を構成する (user_ratingsをベクトル化したテーブル)
 product_comp = (
   spark
     .sql('''
@@ -216,7 +217,7 @@ product_comp = (
          a.product_id as product_a,
          b.product_id as product_b,
          COUNT(*) as size,
-         COLLECT_LIST(a.normalized_purchases) as values_a,
+         COLLECT_LIST(a.normalized_purchases) as values_a, -- <== 製品の「評価」値はユーザーの「スケール済み購入回数」に基づく
          COLLECT_LIST(b.normalized_purchases) as values_b
       FROM instacart.user_ratings a
       INNER JOIN instacart.user_ratings b
@@ -229,15 +230,28 @@ product_comp = (
     ''')
   )
 
+display(product_comp)
 
+# (結果のテーブルから)
+# 製品#1と#4136のペアは、3人のユーザーから購入評価されている。
+# つまり、この2つの製品を購入したユーザーは3人いる。
+# この製品#1と#4136の評価はこれら3人の購入回数に基づく「スケール済みの購入回数」である。
+#
+# 下のPart-2のセルでは、この結果から、2つのプロダクト間の距離を計算する
+
+
+
+# COMMAND ----------
+
+# DBTITLE 1,製品の類似性を計算する(Part-2)
 # 製品の類似性を算出
 product_sim = (
   product_comp
-    .withColumn('id', monotonically_increasing_id())
-    .withColumn('subset_id', expr('id % ({0})'.format(sc.defaultParallelism * 10)))
+    .withColumn('id', monotonically_increasing_id()) # <== IDを新たに割り当てる
+    .withColumn('subset_id', expr('id % ({0})'.format(sc.defaultParallelism * 10))) # <== 並列処理のためのIDを割り当てる
     .groupBy('subset_id')
     .applyInPandas(
-      compare_products, 
+      compare_products, # <== 上記で定義した製品の評価を算出する関数を適用する
       schema='''
         product_a int,
         product_b int,
@@ -259,6 +273,10 @@ shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_sim', ignore_errors=True)
   .mode('overwrite')
   .save('/tmp/mnt/instacart/gold/product_sim')  
 )
+
+
+
+# COMMAND ----------
 
 # Deltaに書き込んだ結果を確認する
 display(
@@ -287,7 +305,7 @@ display(
   )
   .write
   .format('delta')
-  .mode('append')
+  .mode('append') # <== 追記モードでDeltaに書き込む
   .save('/tmp/mnt/instacart/gold/product_sim')
 )
 
@@ -310,7 +328,7 @@ display(
       )
     .write
       .format('delta')
-      .mode('append')
+      .mode('append') # <== 追記モードでDeltaに書き込む
       .save('/tmp/mnt/instacart/gold/product_sim')
   )
 
@@ -329,7 +347,9 @@ display(
 
 # MAGIC %md # Step 2: リコメンデーションを構築する
 # MAGIC 
-# MAGIC ユーザーベースの協調フィルタでは、類似したユーザーから抽出したユーザー評価の加重平均を計算して、おすすめ商品を生成していました。 ここでは、校正期間中にユーザーが購入した商品を検索します。これらの製品は、製品Aが購入セットの製品の1つであるすべての製品ペアを検索するために使用されます。 暗黙の評価と類似性スコアは、推薦スコアとして機能する加重平均を構築するために再び使用され、パーセントランクは、推薦を並べるために計算されます。 ここでは、1人のユーザー、`user_id=148`を対象にしてデモを行います。
+# MAGIC ユーザーベースの協調フィルタでは、類似したユーザーから抽出したユーザー評価の加重平均を計算して、おすすめ商品を生成していました。 
+# MAGIC 
+# MAGIC ここでは、キャリブレーション期間のデータにおいて、ユーザーが購入した商品を抽出します。これらの製品を軸にして、そのすべての製品ペアを抜き出してきます。 暗黙の評価と類似性スコアは、推薦スコアとして機能する加重平均を構築するために再び使用され、パーセントランクは、推薦を並べるために計算されます。 ここでは、1人のユーザー、`user_id=148`を対象にしてデモを行います。
 
 # COMMAND ----------
 
