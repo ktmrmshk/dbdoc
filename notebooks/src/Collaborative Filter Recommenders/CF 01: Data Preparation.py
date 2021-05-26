@@ -1,5 +1,26 @@
 # Databricks notebook source
 # MAGIC %md 
+# MAGIC 
+# MAGIC # 注意
+# MAGIC 
+# MAGIC 同じワークスペース内で複数のユーザー間でデータパスが衝突しないように、DeltaのDB名とファイルパスをユーザー毎にユニークにする必要があります。
+# MAGIC そのため、以下の変数`YOUR_NAME`を他のユーザーと異なる名前で設定してください。
+# MAGIC 
+# MAGIC 複数のnotebookにコードが分かれている場合、すべてのnotebookで同じ値に設定してください。
+# MAGIC 
+# MAGIC (各notebookの最初の部分に変数設定するセルがあります。)
+
+# COMMAND ----------
+
+YOUR_NAME = 'YOUR_UNIQUE_NAME'
+
+# ユニークなDB名を作成
+dbname = f'instacart_{YOUR_NAME}'
+print(f'>>> dbname => {dbname}')
+
+# COMMAND ----------
+
+# MAGIC %md 
 # MAGIC # Chapter1: データの準備
 
 # COMMAND ----------
@@ -50,6 +71,12 @@ import shutil
 
 # COMMAND ----------
 
+# DBTITLE 1,既存データの削除(残骸データをクリア)
+spark.sql(f'DROP DATABASE {dbname} CASCADE')
+dbutils.fs.rm(f'/tmp/{YOUR_NAME}/instacart', True)
+
+# COMMAND ----------
+
 # DBTITLE 1,サンプルデータをストレージ上に配置する(必要に応じて実行してください。)
 # MAGIC %sh
 # MAGIC 
@@ -87,7 +114,8 @@ import shutil
 # COMMAND ----------
 
 # DBTITLE 1,databaseを作成する
-_ = spark.sql('CREATE DATABASE IF NOT EXISTS instacart')
+spark.sql(f'CREATE DATABASE IF NOT EXISTS {dbname}')
+spark.sql(f'USE {dbname}')
 
 # COMMAND ----------
 
@@ -99,10 +127,10 @@ _ = spark.sql('CREATE DATABASE IF NOT EXISTS instacart')
 
 # DBTITLE 1,Orders (注文テーブル)
 # 古いテーブルがあれば削除する
-_ = spark.sql('DROP TABLE IF EXISTS instacart.orders')
+spark.sql('DROP TABLE IF EXISTS orders')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/orders', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/silver/orders', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 orders_schema = StructType([
@@ -120,7 +148,7 @@ orders = (
   spark
   .read
   .csv(
-    '/tmp/mnt/instacart/bronze/orders',
+    f'/tmp/mnt/instacart/bronze/orders',
     header=True,  
     schema=orders_schema
   )
@@ -139,29 +167,29 @@ orders_transformed = (
   .write
   .format('delta')
   .mode('overwrite')
-  .save('/tmp/mnt/instacart/silver/orders')  
+  .save(f'/tmp/{YOUR_NAME}/instacart/silver/orders')  
 )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
-_ = spark.sql('''
-  CREATE TABLE instacart.orders
+spark.sql(f'''
+  CREATE TABLE orders
   USING DELTA
-  LOCATION '/tmp/mnt/instacart/silver/orders'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/silver/orders'
   ''')
 
 # 準備したデータを確認する
 display(
-  spark.table('instacart.orders')
+  spark.table('orders')
 )
 
 # COMMAND ----------
 
 # DBTITLE 1,Products (製品テーブル)
 # 古いテーブルがあれば削除する
-_ = spark.sql('DROP TABLE IF EXISTS instacart.products')
+spark.sql('DROP TABLE IF EXISTS products')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/products', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/silver/products', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 products_schema = StructType([
@@ -188,29 +216,29 @@ products = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/tmp/mnt/instacart/silver/products')
+    .save(f'/tmp/{YOUR_NAME}/instacart/silver/products')
   )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
-_ = spark.sql('''
-  CREATE TABLE instacart.products
+spark.sql(f'''
+  CREATE TABLE products
   USING DELTA
-  LOCATION '/tmp/mnt/instacart/silver/products'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/silver/products'
   ''')
 
 # 準備したデータを確認する
 display(
-  spark.table('instacart.products')
-  )
+  spark.table('products')
+)
 
 # COMMAND ----------
 
 # DBTITLE 1,Order Products (製品注文テーブル)
 # 古いテーブルがあれば削除する
-_ = spark.sql('DROP TABLE IF EXISTS instacart.order_products')
+spark.sql('DROP TABLE IF EXISTS order_products')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/order_products', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/silver/order_products', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 order_products_schema = StructType([
@@ -237,29 +265,29 @@ order_products = (
   .write
   .format('delta')
   .mode('overwrite')
-  .save('/tmp/mnt/instacart/silver/order_products')  
+  .save(f'/tmp/{YOUR_NAME}/instacart/silver/order_products')  
 )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
-_ = spark.sql('''
-  CREATE TABLE instacart.order_products
+spark.sql(f'''
+  CREATE TABLE order_products
   USING DELTA
-  LOCATION '/tmp/mnt/instacart/silver/order_products'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/silver/order_products'
   ''')
 
 # 準備したデータを確認する
 display(
-  spark.table('instacart.order_products')  
+  spark.table('order_products')  
 )
 
 # COMMAND ----------
 
 # DBTITLE 1,Departments (部署テーブル)
 # 古いテーブルがあれば削除する
-_ = spark.sql('DROP TABLE IF EXISTS instacart.departments')
+spark.sql('DROP TABLE IF EXISTS departments')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/departments', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/silver/departments', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 departments_schema = StructType([
@@ -284,29 +312,29 @@ departments = (
   .write
   .format('delta')
   .mode('overwrite')
-  .save('/tmp/mnt/instacart/silver/departments')
+  .save(f'/tmp/{YOUR_NAME}/instacart/silver/departments')
 )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
-_ = spark.sql('''
-  CREATE TABLE instacart.departments
+spark.sql(f'''
+  CREATE TABLE departments
   USING DELTA
-  LOCATION '/tmp/mnt/instacart/silver/departments'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/silver/departments'
   ''')
 
 # 準備したデータを確認する
 display(
-  spark.table('instacart.departments') 
+  spark.table('departments') 
 )
 
 # COMMAND ----------
 
 # DBTITLE 1,Aisles (通路テーブル)
 # 古いテーブルがあれば削除する
-_ = spark.sql('DROP TABLE IF EXISTS instacart.aisles')
+spark.sql('DROP TABLE IF EXISTS aisles')
 
 # 同様に、古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/silver/aisles', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/silver/aisles', ignore_errors=True)
 
 # 今回扱うデータのスキーマを定義(事前に分かっているものとする)
 aisles_schema = StructType([
@@ -331,19 +359,19 @@ aisles = (
   .write
   .format('delta')
   .mode('overwrite')
-  .save('/tmp/mnt/instacart/silver/aisles')  
+  .save(f'/tmp/{YOUR_NAME}/instacart/silver/aisles')  
 )
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
-_ = spark.sql('''
-  CREATE TABLE instacart.aisles
+spark.sql(f'''
+  CREATE TABLE aisles
   USING DELTA
-  LOCATION '/tmp/mnt/instacart/silver/aisles'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/silver/aisles'
   ''')
 
 # 準備したデータを確認する
 display(
-  spark.table('instacart.aisles')
+  spark.table('aisles')
 )
 
 # COMMAND ----------
@@ -356,13 +384,13 @@ display(
 
 # DBTITLE 1,ユーザーごとにある商品を購入した回数を算出する
 # 古いDeltaファイルがあれば削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/ratings__user_product_orders', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/gold/ratings__user_product_orders', ignore_errors=True)
 
 # ユーザーごとにある商品を購入した回数を算出する
 user_product_orders = (
   spark
-  .table('instacart.orders') # テーブルデータを読み込んでDataFrameとして返す
-  .join(spark.table('instacart.order_products'), on='order_id')
+  .table('orders') # テーブルデータを読み込んでDataFrameとして返す
+  .join(spark.table('order_products'), on='order_id')
   .groupBy('user_id', 'product_id', 'split')
   .agg( count(lit(1)).alias('purchases') )
 )
@@ -373,14 +401,23 @@ user_product_orders = (
   .write
   .format('delta')
   .mode('overwrite')
-  .save('/tmp/mnt/instacart/gold/ratings__user_product_orders')
+  .save(f'/tmp/{YOUR_NAME}/instacart/gold/ratings__user_product_orders')
 )
+
+
+# Deltaテーブルを登録
+spark.sql(f'''
+  CREATE TABLE IF NOT EXISTS ratings__user_product_orders
+  USING delta
+  LOCATION '/tmp/{YOUR_NAME}/instacart/gold/ratings__user_product_orders'
+''')
+
 
 # 書き込んだ結果を結果をテーブル参照する
 display(
-  spark.sql('''
+  spark.sql(f'''
     SELECT * 
-    FROM DELTA.`/tmp/mnt/instacart/gold/ratings__user_product_orders` 
+    FROM ratings__user_product_orders
     ORDER BY split, user_id, product_id
     ''')
 )
@@ -408,7 +445,7 @@ display(
 
 # DBTITLE 1,ユーザー別にある商品の「スケール済み購入回数」を算出
 # MAGIC %sql
-# MAGIC DROP VIEW IF EXISTS instacart.user_ratings;
+# MAGIC DROP VIEW IF EXISTS user_ratings;
 # MAGIC 
 # MAGIC -- 解説: ここでは、以下のような「スケール済み購入回数」を算出している
 # MAGIC --  あるユーザーが製品A, B, Cをそれぞれ3, 4, 5回購入した場合、
@@ -417,7 +454,7 @@ display(
 # MAGIC --  * 同様にこのユーザーの製品B, Cのスケール済み購入回数(normalized_purchases)は、4/7.07 = 0.566, 5/7.07 = 0.707
 # MAGIC -- (今後は、上記を"user_ratings"とする)
 # MAGIC 
-# MAGIC CREATE VIEW instacart.user_ratings 
+# MAGIC CREATE VIEW user_ratings 
 # MAGIC AS
 # MAGIC   WITH ratings AS (
 # MAGIC     SELECT
@@ -425,7 +462,7 @@ display(
 # MAGIC       user_id,
 # MAGIC       product_id,
 # MAGIC       SUM(purchases) as purchases
-# MAGIC     FROM DELTA.`/tmp/mnt/instacart/gold/ratings__user_product_orders`
+# MAGIC     FROM ratings__user_product_orders
 # MAGIC     GROUP BY split, user_id, product_id
 # MAGIC     )
 # MAGIC   SELECT
@@ -449,7 +486,7 @@ display(
 # MAGIC     ON a.user_id=b.user_id AND a.split=b.split;
 # MAGIC   
 # MAGIC -- 上記で作成したviewの確認
-# MAGIC SELECT * FROM instacart.user_ratings ORDER BY user_id, split, product_id;
+# MAGIC SELECT * FROM user_ratings ORDER BY user_id, split, product_id;
 
 # COMMAND ----------
 
@@ -475,21 +512,21 @@ display(
 
 # DBTITLE 1,ユーザー識別せずに、ある商品の「スケール済み購入回数」を算出
 # MAGIC %sql
-# MAGIC DROP VIEW IF EXISTS instacart.naive_ratings;
+# MAGIC DROP VIEW IF EXISTS naive_ratings;
 # MAGIC 
 # MAGIC -- 解説: 先ほどはユーザーごとに、その人の商品購入回数から「スケール済み購入回数」を算出した。
 # MAGIC --      今回は、ユーザーごとではなく、全体の商品の購入回数を使って、「スケール済み購入回数」を算出してみる。
 # MAGIC --      つまり、全ユーザーが購入した回数が多い(もっとも売れた)商品の「スケール済み購入回数」が一番大きくなる。
 # MAGIC -- (今後は、上記を"native_ratings"とする。)
 # MAGIC 
-# MAGIC CREATE VIEW instacart.naive_ratings 
+# MAGIC CREATE VIEW naive_ratings 
 # MAGIC AS
 # MAGIC   WITH ratings AS (
 # MAGIC     SELECT
 # MAGIC       split,
 # MAGIC       product_id,
 # MAGIC       SUM(purchases) as purchases
-# MAGIC     FROM DELTA.`/tmp/mnt/instacart/gold/ratings__user_product_orders`
+# MAGIC     FROM ratings__user_product_orders
 # MAGIC     GROUP BY split, product_id
 # MAGIC     )
 # MAGIC   SELECT
@@ -510,4 +547,4 @@ display(
 # MAGIC     ) b
 # MAGIC     ON a.split=b.split;
 # MAGIC   
-# MAGIC SELECT * FROM instacart.naive_ratings ORDER BY split, product_id;
+# MAGIC SELECT * FROM naive_ratings ORDER BY split, product_id;

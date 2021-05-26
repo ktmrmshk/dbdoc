@@ -217,7 +217,7 @@ display(similar_users)
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC L2正規化ベクトル空間では、2点間の最小距離は0.0で、最大距離は2の平方根に相当します。 これは、潜在的な類似性スコアの最大値が1.0、最小値が0.414であることを意味します。 標準的な[min-max変換](https://en.wikipedia.org/wiki/Feature_scaling)を適用すると、類似度スコアを1.0(最も似ている)から0.0(最も似ていない)の範囲に変換することができます。
+# MAGIC L2正規化ベクトル空間では、2点間の最小距離は0.0で、最大距離は2の平方根に相当します。 これは、潜在的な類似性スコアの最大値が1.0、最小値が0.141であることを意味します。 標準的な[min-max変換](https://en.wikipedia.org/wiki/Feature_scaling)を適用すると、類似度スコアを1.0(最も似ている)から0.0(最も似ていない)の範囲に変換することができます。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_similarityminmax2.png" width="600">
 

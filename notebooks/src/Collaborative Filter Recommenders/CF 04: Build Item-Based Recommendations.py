@@ -457,12 +457,6 @@ display(
 
 # COMMAND ----------
 
-_ = spark.sql("CACHE TABLE instacart.user_ratings")
-_ = spark.sql("CACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`")
-
-
-# COMMAND ----------
-
 # DBTITLE 1,評価メトリックを算出する(制約なし)
 eval_set = (
   spark
@@ -539,9 +533,6 @@ display(
 # COMMAND ----------
 
 # DBTITLE 1,閾値をいくつか設定して、それぞれのレコメンデーションを評価する
-_ = spark.sql("CACHE TABLE instacart.user_ratings")
-_ = spark.sql("CACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`")
-
 results = []
 
 # 以下の2種類の閾値を設定してシミュレーションをする
@@ -631,3 +622,7 @@ display(
 # MAGIC UNCACHE TABLE instacart.user_ratings;
 # MAGIC UNCACHE TABLE random_users;
 # MAGIC UNCACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`;
+
+# COMMAND ----------
+
+
