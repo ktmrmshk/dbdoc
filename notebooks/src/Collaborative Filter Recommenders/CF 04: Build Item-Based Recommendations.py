@@ -344,7 +344,7 @@ display(
 # record entries for product A to product A (sim = 1.0)
 (
   spark
-    .table('instacart.user_ratings')
+    .table('user_ratings')
     .filter("split='calibration'")
     .groupBy('product_id')
       .agg(count('*').alias('size'))
@@ -648,10 +648,6 @@ display(
 
 # DBTITLE 1,Clear Cached Data
 # MAGIC %sql  
-# MAGIC UNCACHE TABLE instacart.user_ratings;
+# MAGIC UNCACHE TABLE user_ratings;
 # MAGIC UNCACHE TABLE random_users;
 # MAGIC UNCACHE TABLE product_sim;
-
-# COMMAND ----------
-
-

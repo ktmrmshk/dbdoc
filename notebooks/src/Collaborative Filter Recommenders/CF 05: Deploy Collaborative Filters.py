@@ -1,10 +1,33 @@
 # Databricks notebook source
+# MAGIC %md 
+# MAGIC 
+# MAGIC # 注意
+# MAGIC 
+# MAGIC 同じワークスペース内で複数のユーザー間でデータパスが衝突しないように、DeltaのDB名とファイルパスをユーザー毎にユニークにする必要があります。
+# MAGIC そのため、以下の変数`YOUR_NAME`を他のユーザーと異なる名前で設定してください。
+# MAGIC 
+# MAGIC 複数のnotebookにコードが分かれている場合、すべてのnotebookで同じ値に設定してください。
+# MAGIC 
+# MAGIC (各notebookの最初の部分に変数設定するセルがあります。)
+
+# COMMAND ----------
+
+YOUR_NAME = 'YOUR_UNIQUE_NAME'
+
+# ユニークなDB名を作成
+dbname = f'instacart_{YOUR_NAME}'
+print(f'>>> dbname => {dbname}')
+
+spark.sql(f'USE {dbname}')
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # Chapter5. 協調フィルタリングのデプロイ
 
 # COMMAND ----------
 
-# MAGIC %md The purpose of this notebook is to explore how the collaborative-filter recommenders developed in previous notebooks might be operationalized. This notebook should be run on a **Databricks ML 7.1+ cluster**.
+# MAGIC %md このノートブックの目的は、ユーザーベースの協調フィルタの構築に向けて、類似したユーザーを効率的に特定する方法を探ることです。このノートブックは、**Databricks 7.1+ クラスタ**で動作するように設計されています。 
 
 # COMMAND ----------
 
@@ -56,8 +79,8 @@ user_ratings = spark.sql('''
     user_id,
     product_id,
     normalized_purchases,
-    (SELECT max(product_id) + 1 FROM instacart.products) as size
-  FROM instacart.user_ratings
+    (SELECT max(product_id) + 1 FROM products) as size
+  FROM user_ratings
   WHERE split = 'calibration'
   ''')
 
@@ -70,7 +93,7 @@ def to_vector(size, index_list, value_list):
     ind, val = zip(*sorted(zip(index_list, value_list)))
     return Vectors.sparse(size, ind, val)
     
-_ = spark.udf.register('to_vector', to_vector)
+spark.udf.register('to_vector', to_vector)
 
 # assemble user vectors
 user_features = (
@@ -82,7 +105,7 @@ user_features = (
           )
       .crossJoin(
           spark
-            .table('instacart.products')
+            .table('products')
             .groupBy()
               .agg( max('product_id').alias('max_product_id'))
               .withColumn('size', expr('max_product_id+1'))
@@ -110,7 +133,7 @@ fitted_lsh = (
 user_features_bucketed = fitted_lsh.transform(user_features)
 
 # clean up any older copies of data
-shutil.rmtree('/dbfs/tmp/mnt/instacart/tmp/user_features', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/tmp/user_features', ignore_errors=True)
 
 # persist data for later use
 (
@@ -118,8 +141,14 @@ shutil.rmtree('/dbfs/tmp/mnt/instacart/tmp/user_features', ignore_errors=True)
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/tmp/mnt/instacart/tmp/user_features_bucketed')
+    .save(f'/tmp/{YOUR_NAME}/instacart/tmp/user_features_bucketed')
   )
+
+spark.sql(f'''
+  CREATE TABLE user_features_bucketed
+  USING DELTA
+  LOCATION '/tmp/{YOUR_NAME}/instacart/tmp/user_features_bucketed'
+  ''')
 
 # COMMAND ----------
 
@@ -147,18 +176,18 @@ def get_top_users( data ):
 # COMMAND ----------
 
 # DBTITLE 1,出力先のテーブルを初期化しておく
-_ = spark.sql('DROP TABLE IF EXISTS instacart.user_pairs')
+spark.sql('DROP TABLE IF EXISTS user_pairs')
 
-shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/user_pairs', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/gold/user_pairs', ignore_errors=True)
 
-_ = spark.sql('''
-  CREATE TABLE instacart.user_pairs (
+spark.sql(f'''
+  CREATE TABLE user_pairs (
     user_id int,
     paired_user_id int,
     similarity double
     )
   USING delta
-  LOCATION '/tmp/mnt/instacart/gold/user_pairs'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/gold/user_pairs'
   ''')
 
 # COMMAND ----------
@@ -167,7 +196,7 @@ _ = spark.sql('''
 # retrieve hashed users
 b = (
   spark
-    .table('DELTA.`/tmp/mnt/instacart/tmp/user_features_bucketed`')
+    .table(f'DELTA.`/tmp/{YOUR_NAME}/instacart/tmp/user_features_bucketed`')
   ).cache()
 
 max_user_per_cycle = 5000
@@ -182,8 +211,8 @@ while 1 > 0:
   # get users to generate pairs for
   a = (
     spark
-      .table('DELTA.`/tmp/mnt/instacart/tmp/user_features_bucketed`')
-      .join( spark.table('instacart.user_pairs'), on='user_id', how='left_anti')  # user_a not in user_pairs table
+      .table('user_features_bucketed')
+      .join( spark.table('user_pairs'), on='user_id', how='left_anti')  # user_a not in user_pairs table
       .limit(max_user_per_cycle)
     )
 
@@ -220,14 +249,17 @@ while 1 > 0:
       .save('/tmp/mnt/instacart/gold/user_pairs')
       )
 
+  
+  
+  
 # print count of pairs
-print( 'Total pairs generated: {0}'.format(spark.table('instacart.user_pairs').count()) )
+print( 'Total pairs generated: {0}'.format(spark.table('user_pairs').count()) )
 
 # COMMAND ----------
 
 # DBTITLE 1,ユーザーペアを確認
 display(
-  spark.table('instacart.user_pairs')  
+  spark.table('user_pairs')  
 )
 
 # COMMAND ----------
@@ -302,9 +334,9 @@ def compare_products( data ):
 
 product_pairs = (
   spark
-    .table('instacart.user_ratings').filter("split='calibration'").selectExpr('user_id','product_id as product_a','normalized_purchases as ratings_a')
+    .table('user_ratings').filter("split='calibration'").selectExpr('user_id','product_id as product_a','normalized_purchases as ratings_a')
     .join( 
-      spark.table('instacart.user_ratings').filter("split='calibration'").selectExpr('user_id','product_id as product_b','normalized_purchases as ratings_b'),
+      spark.table('user_ratings').filter("split='calibration'").selectExpr('user_id','product_id as product_b','normalized_purchases as ratings_b'),
       on=['user_id'], 
       how='inner'
       )
@@ -331,19 +363,19 @@ product_pairs = (
 # COMMAND ----------
 
 # DBTITLE 1,出力先のテーブルを初期化しておく
-_ = spark.sql('DROP TABLE IF EXISTS instacart.product_pairs')
+spark.sql('DROP TABLE IF EXISTS product_pairs')
 
-shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_pairs', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/gold/product_pairs', ignore_errors=True)
 
-_ = spark.sql('''
-  CREATE TABLE instacart.product_pairs (
+spark.sql(f'''
+  CREATE TABLE product_pairs (
     product_id int,
     paired_product_id int,
     size long,
     similarity double
     )
   USING delta
-  LOCATION '/tmp/mnt/instacart/gold/product_pairs'
+  LOCATION '/tmp/{YOUR_NAME}/instacart/gold/product_pairs'
   ''')
 
 # COMMAND ----------
@@ -355,13 +387,13 @@ _ = spark.sql('''
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/tmp/mnt/instacart/gold/product_pairs')
+    .save(f'/tmp/{YOUR_NAME}/instacart/gold/product_pairs')
   )
   
 # flip product A & product B
 (
   spark
-    .table('DELTA.`/tmp/mnt/instacart/gold/product_pairs`')
+    .table('product_pairs')
     .selectExpr(
       'paired_product_id as product_id',
       'product_id as paired_product_id',
@@ -371,13 +403,13 @@ _ = spark.sql('''
     .write
     .format('delta')
     .mode('append')
-    .save('/tmp/mnt/instacart/gold/product_pairs')
+    .save(f'/tmp/{YOUR_NAME}/instacart/gold/product_pairs')
   )
  
  # record entries for product A to product A (sim = 1.0)
 (
    spark
-     .table('instacart.user_ratings')
+     .table('user_ratings')
      .filter("split='calibration'")
      .groupBy('product_id')
        .agg(count('*').alias('size'))
@@ -390,11 +422,11 @@ _ = spark.sql('''
      .write
        .format('delta')
        .mode('append')
-       .save('/tmp/mnt/instacart/gold/product_pairs')
+       .save(f'/tmp/{YOUR_NAME}/instacart/gold/product_pairs')
   )
    
 display(
-  spark.table('instacart.product_pairs')
+  spark.table('product_pairs')
   )
 
 # COMMAND ----------
@@ -423,9 +455,9 @@ display(
 # DBTITLE 1,ユーザーベースのレコメンデーションのviewを作成
 # MAGIC %sql
 # MAGIC 
-# MAGIC DROP VIEW IF EXISTS instacart.user_based_recommendations;
+# MAGIC DROP VIEW IF EXISTS user_based_recommendations;
 # MAGIC 
-# MAGIC CREATE VIEW instacart.user_based_recommendations 
+# MAGIC CREATE VIEW user_based_recommendations 
 # MAGIC AS
 # MAGIC   SELECT
 # MAGIC     m.user_id,
@@ -438,15 +470,15 @@ display(
 # MAGIC       x.paired_user_id,
 # MAGIC       y.product_id,
 # MAGIC       x.similarity
-# MAGIC     FROM instacart.user_pairs x
-# MAGIC     CROSS JOIN instacart.products y
+# MAGIC     FROM user_pairs x
+# MAGIC     CROSS JOIN products y
 # MAGIC     ) m
 # MAGIC   LEFT OUTER JOIN ( -- retrieve ratings actually provided by similar users
 # MAGIC     SELECT 
 # MAGIC       user_id as paired_user_id, 
 # MAGIC       product_id, 
 # MAGIC       normalized_purchases 
-# MAGIC     FROM instacart.user_ratings
+# MAGIC     FROM user_ratings
 # MAGIC     WHERE split='calibration'
 # MAGIC     ) n
 # MAGIC     ON m.paired_user_id=n.paired_user_id AND m.product_id=n.product_id
@@ -455,7 +487,7 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Let's now use our view to render recommendations for a user:
+# MAGIC %md それでは、あるユーザーに対するレコメンデーションを構築していきましょう
 
 # COMMAND ----------
 
@@ -464,19 +496,19 @@ display(
 # MAGIC 
 # MAGIC CACHE TABLE cached__user_ratings AS 
 # MAGIC   SELECT user_id, product_id, normalized_purchases 
-# MAGIC   FROM instacart.user_ratings 
+# MAGIC   FROM user_ratings 
 # MAGIC   WHERE split='calibration';
 # MAGIC   
 # MAGIC CACHE TABLE cached__products AS 
 # MAGIC   SELECT product_id 
-# MAGIC   FROM instacart.products;
+# MAGIC   FROM products;
 
 # COMMAND ----------
 
 # DBTITLE 1,レコメンデーションの実施(ユーザーベース)
 # MAGIC %sql 
 # MAGIC   SELECT * 
-# MAGIC   FROM instacart.user_based_recommendations 
+# MAGIC   FROM user_based_recommendations 
 # MAGIC   WHERE user_id = 148
 # MAGIC   ORDER BY score DESC
 
@@ -510,9 +542,9 @@ display(
 # DBTITLE 1,アイテムベースのレコメンデーションのviewを作成
 # MAGIC %sql
 # MAGIC 
-# MAGIC DROP VIEW IF EXISTS instacart.item_based_recommendations;
+# MAGIC DROP VIEW IF EXISTS item_based_recommendations;
 # MAGIC 
-# MAGIC CREATE VIEW instacart.item_based_recommendations 
+# MAGIC CREATE VIEW item_based_recommendations 
 # MAGIC AS
 # MAGIC   SELECT
 # MAGIC     user_id,
@@ -525,8 +557,8 @@ display(
 # MAGIC       x.normalized_purchases,
 # MAGIC       y.similarity,
 # MAGIC       RANK() OVER (PARTITION BY x.user_id, x.product_id ORDER BY y.similarity DESC) as product_rank
-# MAGIC     FROM instacart.user_ratings x
-# MAGIC     INNER JOIN instacart.product_pairs y
+# MAGIC     FROM user_ratings x
+# MAGIC     INNER JOIN product_pairs y
 # MAGIC       ON x.product_id=y.product_id
 # MAGIC     WHERE 
 # MAGIC       x.split = 'calibration'
@@ -545,7 +577,7 @@ display(
 # MAGIC 
 # MAGIC CACHE TABLE cached__user_ratings AS 
 # MAGIC   SELECT user_id, product_id, normalized_purchases 
-# MAGIC   FROM instacart.user_ratings 
+# MAGIC   FROM user_ratings 
 # MAGIC   WHERE split='calibration';
 
 # COMMAND ----------
@@ -553,7 +585,7 @@ display(
 # DBTITLE 1,リコメンデーションの実施(アイテムベース)
 # MAGIC %sql 
 # MAGIC   SELECT * 
-# MAGIC   FROM instacart.item_based_recommendations 
+# MAGIC   FROM item_based_recommendations 
 # MAGIC   WHERE user_id = 148
 # MAGIC   ORDER BY score DESC
 

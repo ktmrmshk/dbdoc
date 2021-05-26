@@ -427,7 +427,7 @@ spark.conf.set('spark.sql.shuffle.partitions', max_partition_count)
 
 # DBTITLE 1,ランダムサンプルで類似ユーザーをピックアップする
 # サンプリングレート
-sample_fraction = 0.10
+sample_fraction = 0.010
 
 # 取りうる最大の距離
 max_distance = math.sqrt(2)
@@ -439,7 +439,7 @@ min_score = 1 / (1 + math.sqrt(2))
 shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/gold/similarity_results', ignore_errors=True)
 
 # perform similarity join for sample of users
-sample_comparisons = (
+sampled_comparisons = (
   fitted_lsh.approxSimilarityJoin(
     hashed_vectors.sample(withReplacement=False, fraction=sample_fraction), # <==　ここでユーザーをランダムにピックアップしている
     hashed_vectors,
@@ -455,14 +455,16 @@ sample_comparisons = (
     )  
 )
 
-# 再利用するためにDeltaに書き込む
+# Deltaに書き込む(永続化)
 (
-  sample_comparisons
-    .write
-    .format('delta')
-    .mode('overwrite')
-    .save(f'/tmp/{YOUR_NAME}/instacart/gold/similarity_results')
-  )
+  sampled_comparisons
+  .write.format('delta')
+  .mode('overwrite')
+  .save(f'/tmp/{YOUR_NAME}/instacart/gold/similarity_results')
+)
+
+
+# COMMAND ----------
 
 # SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
 spark.sql(f'''
@@ -730,3 +732,7 @@ def list_cached_dataframes():
   
 for name, obj in list_cached_dataframes():
   obj.unpersist()
+
+# COMMAND ----------
+
+
