@@ -1,5 +1,28 @@
 # Databricks notebook source
 # MAGIC %md 
+# MAGIC 
+# MAGIC # 注意
+# MAGIC 
+# MAGIC 同じワークスペース内で複数のユーザー間でデータパスが衝突しないように、DeltaのDB名とファイルパスをユーザー毎にユニークにする必要があります。
+# MAGIC そのため、以下の変数`YOUR_NAME`を他のユーザーと異なる名前で設定してください。
+# MAGIC 
+# MAGIC 複数のnotebookにコードが分かれている場合、すべてのnotebookで同じ値に設定してください。
+# MAGIC 
+# MAGIC (各notebookの最初の部分に変数設定するセルがあります。)
+
+# COMMAND ----------
+
+YOUR_NAME = 'YOUR_UNIQUE_NAME'
+
+# ユニークなDB名を作成
+dbname = f'instacart_{YOUR_NAME}'
+print(f'>>> dbname => {dbname}')
+
+spark.sql(f'USE {dbname}')
+
+# COMMAND ----------
+
+# MAGIC %md 
 # MAGIC # Chapter2: 類似ユーザーを特定する
 
 # COMMAND ----------
@@ -45,7 +68,7 @@ import math
 # DBTITLE 1,レコメンドの対象の顧客数(ユーザー数)
 # MAGIC %sql
 # MAGIC 
-# MAGIC SELECT 'users' as entity, COUNT(DISTINCT user_id) as instances FROM instacart.user_ratings
+# MAGIC SELECT 'users' as entity, COUNT(DISTINCT user_id) as instances FROM user_ratings
 
 # COMMAND ----------
 
@@ -62,7 +85,7 @@ import math
 # DBTITLE 1,データセットにある製品数
 # MAGIC %sql 
 # MAGIC 
-# MAGIC SELECT 'products', COUNT(DISTINCT product_id) FROM instacart.products
+# MAGIC SELECT 'products', COUNT(DISTINCT product_id) FROM products
 
 # COMMAND ----------
 
@@ -79,7 +102,7 @@ import math
 # MAGIC SELECT 'ratings', COUNT(*) as instances
 # MAGIC FROM (
 # MAGIC   SELECT DISTINCT user_id, product_id 
-# MAGIC   FROM instacart.user_ratings
+# MAGIC   FROM user_ratings
 # MAGIC   );
 
 # COMMAND ----------
@@ -97,24 +120,6 @@ import math
 # MAGIC 単純な方法から試してみましょう。*ブルートフォース(総当たり)* では、各顧客を他の顧客と比較します。この作業には、ユーザー同士の組み合わせをクラスターに分散させることで、Databricksのプラットフォームをフルに活用することができます。
 # MAGIC 
 # MAGIC **注意** ここでは、デモ用をタイムリーに実行できるようにするため、LIMIT句を使用して、比較対象を100人のユーザーのサブセットのみに限定しています。
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC         SELECT
-# MAGIC           user_id,
-# MAGIC           product_id,
-# MAGIC           normalized_purchases
-# MAGIC         FROM instacart.user_ratings
-# MAGIC         WHERE 
-# MAGIC           split = 'calibration' AND
-# MAGIC           user_id IN (  -- ユーザー数を絞る
-# MAGIC             SELECT DISTINCT user_id 
-# MAGIC             FROM instacart.user_ratings 
-# MAGIC             WHERE split = 'calibration'
-# MAGIC             ORDER BY user_id 
-# MAGIC             LIMIT 100   
-# MAGIC             )
 
 # COMMAND ----------
 
@@ -136,12 +141,12 @@ ratings = (
           user_id,
           product_id,
           normalized_purchases
-        FROM instacart.user_ratings
+        FROM user_ratings
         WHERE 
           split = 'calibration' AND
           user_id IN (  -- ユーザー数を絞る <== "user_rating"の中から、100人に絞る
             SELECT DISTINCT user_id 
-            FROM instacart.user_ratings 
+            FROM user_ratings 
             WHERE split = 'calibration'
             ORDER BY user_id 
             LIMIT 100          -- limit should be > 1
@@ -180,7 +185,7 @@ ratings_b = (
 # このサイズはこの後使用する、スパースベクタ化で必要。
 size = spark.sql('''
   SELECT 1 + COUNT(DISTINCT product_id) as size 
-  FROM instacart.products
+  FROM products
   ''')
 
 # User-AとUser-Bを関連づける(Join)
@@ -297,7 +302,7 @@ display(
 
 # DBTITLE 1,キャッシュデータをクリア
 # unpersist dataset that is no longer needed
-_ = ratings.unpersist()
+ratings.unpersist()
 
 # COMMAND ----------
 
@@ -391,7 +396,7 @@ def to_vector(size, index_list, value_list):
     return Vectors.sparse(size, ind, val)
 
 # SQL内で使用できるように関数登録しておく
-_ = spark.udf.register('to_vector', to_vector)
+spark.udf.register('to_vector', to_vector)
 
 # COMMAND ----------
 
@@ -409,7 +414,7 @@ _ = spark.udf.register('to_vector', to_vector)
 # MAGIC FROM ( -- aggregate product IDs and ratings into lists
 # MAGIC   SELECT
 # MAGIC     user_id,
-# MAGIC     (SELECT MAX(product_id) FROM instacart.products) + 1 as size,
+# MAGIC     (SELECT MAX(product_id) FROM products) + 1 as size,
 # MAGIC     COLLECT_LIST(product_id) as index_list, -- <== 先ほどと同様に複数行をリストにして、1行内に埋め込む
 # MAGIC     COLLECT_LIST(normalized_purchases) as value_list
 # MAGIC   FROM ( -- キャリブレーション期間のデータの全てのユーザー
@@ -417,7 +422,7 @@ _ = spark.udf.register('to_vector', to_vector)
 # MAGIC       user_id,
 # MAGIC       product_id,
 # MAGIC       normalized_purchases
-# MAGIC     FROM instacart.user_ratings
+# MAGIC     FROM user_ratings
 # MAGIC     WHERE split = 'calibration'
 # MAGIC     )
 # MAGIC   GROUP BY user_id
@@ -429,7 +434,7 @@ _ = spark.udf.register('to_vector', to_vector)
 # assemble user ratings
 user_ratings = (
   spark
-    .table('instacart.user_ratings')
+    .table('user_ratings')
     .filter("split = 'calibration'")
     .select('user_id', 'product_id', 'normalized_purchases')
   )
@@ -447,7 +452,7 @@ ratings_lists = (
 # calculate vector size
 vector_size = (
   spark
-    .table('instacart.products')
+    .table('products')
     .groupBy()
       .agg( 
         (lit(1) + max('product_id')).alias('size')
@@ -839,7 +844,7 @@ ratings = (
           user_id,
           product_id,
           normalized_purchases
-        FROM instacart.user_ratings
+        FROM user_ratings
         WHERE split = 'calibration'
           )
       GROUP BY user_id
@@ -866,7 +871,7 @@ ratings_b = (
 # スパースベクトル化のため、プロダクト数をサイズを調べておく
 size = spark.sql('''
   SELECT 1 + COUNT(DISTINCT product_id) as size 
-  FROM instacart.products
+  FROM products
 ''')
 
 # ユーザー #148とユーザーb(その他のユーザー)のcross join
