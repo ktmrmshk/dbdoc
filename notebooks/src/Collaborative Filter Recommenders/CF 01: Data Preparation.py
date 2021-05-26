@@ -27,6 +27,10 @@ print(f'>>> dbname => {dbname}')
 
 # MAGIC %md 
 # MAGIC このノートブックの目的は、協調フィルタリングによるレコメンダーを実施するために使用するデータセットを準備することです。 このノートブックは **Databricks 7.1+ クラスタ** で実行する必要があります。
+# MAGIC 
+# MAGIC このノートブックは、(こちら)[https://databricks.com/solutions/accelerators/recommendation-engines]の日本語訳にになります。
+# MAGIC 
+# MAGIC また、一部のセルは実行時間が非常に大きくなります。このため、上記のオリジナルのノートブックに含まれる実行結果も併せて参照ください。
 
 # COMMAND ----------
 
