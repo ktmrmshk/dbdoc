@@ -1,4 +1,27 @@
 # Databricks notebook source
+# MAGIC %md 
+# MAGIC 
+# MAGIC # 注意
+# MAGIC 
+# MAGIC 同じワークスペース内で複数のユーザー間でデータパスが衝突しないように、DeltaのDB名とファイルパスをユーザー毎にユニークにする必要があります。
+# MAGIC そのため、以下の変数`YOUR_NAME`を他のユーザーと異なる名前で設定してください。
+# MAGIC 
+# MAGIC 複数のnotebookにコードが分かれている場合、すべてのnotebookで同じ値に設定してください。
+# MAGIC 
+# MAGIC (各notebookの最初の部分に変数設定するセルがあります。)
+
+# COMMAND ----------
+
+YOUR_NAME = 'YOUR_UNIQUE_NAME'
+
+# ユニークなDB名を作成
+dbname = f'instacart_{YOUR_NAME}'
+print(f'>>> dbname => {dbname}')
+
+spark.sql(f'USE {dbname}')
+
+# COMMAND ----------
+
 # MAGIC %md # Chapter 4. アイテムベースのレコメンデーションの構築
 
 # COMMAND ----------
@@ -35,7 +58,7 @@ import shutil
 # COMMAND ----------
 
 # DBTITLE 1,シャッフルパーティションを変更する
-_ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
+spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 
 # COMMAND ----------
 
@@ -45,14 +68,14 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 # COMMAND ----------
 
 # DBTITLE 1,使用するデータをキャッシュしておく
-# MAGIC %sql  CACHE TABLE instacart.user_ratings
+# MAGIC %sql CACHE TABLE user_ratings
 
 # COMMAND ----------
 
 # DBTITLE 1,(補足, 復習) instacart.user_ratingsテーブルの内容
 # MAGIC %sql 
 # MAGIC 
-# MAGIC select * from instacart.user_ratings
+# MAGIC select * from user_ratings
 
 # COMMAND ----------
 
@@ -63,8 +86,8 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 # MAGIC   b.product_id as product_b,
 # MAGIC   COUNT(*) as users
 # MAGIC FROM
-# MAGIC   instacart.user_ratings a
-# MAGIC   INNER JOIN instacart.user_ratings b ON a.user_id = b.user_id
+# MAGIC   user_ratings a
+# MAGIC   INNER JOIN user_ratings b ON a.user_id = b.user_id
 # MAGIC   AND a.split = b.split
 # MAGIC WHERE
 # MAGIC   a.product_id < b.product_id
@@ -90,15 +113,15 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 # MAGIC      a.product_id as product_a,
 # MAGIC      b.product_id as product_b,
 # MAGIC      COUNT(*) as users
-# MAGIC   FROM instacart.user_ratings a
-# MAGIC   INNER JOIN instacart.user_ratings b
+# MAGIC   FROM user_ratings a
+# MAGIC   INNER JOIN user_ratings b
 # MAGIC     ON  a.user_id = b.user_id AND 
 # MAGIC         a.split = b.split
 # MAGIC   WHERE a.product_id < b.product_id AND
 # MAGIC         a.split = 'calibration'
 # MAGIC   GROUP BY a.product_id, b.product_id
 # MAGIC   HAVING COUNT(*) > 1 -- exclude purchase combinations found in association with only one user
-# MAGIC   )    
+# MAGIC   )
 
 # COMMAND ----------
 
@@ -124,8 +147,8 @@ _ = spark.conf.set('spark.sql.shuffle.partitions',sc.defaultParallelism * 100)
 # MAGIC      a.product_id as product_a,
 # MAGIC      b.product_id as product_b,
 # MAGIC      COUNT(*) as users
-# MAGIC   FROM instacart.user_ratings a
-# MAGIC   INNER JOIN instacart.user_ratings b
+# MAGIC   FROM user_ratings a
+# MAGIC   INNER JOIN user_ratings b
 # MAGIC     ON  a.user_id = b.user_id AND 
 # MAGIC         a.split = b.split
 # MAGIC   WHERE a.product_id < b.product_id AND
@@ -219,8 +242,8 @@ product_comp = (
          COUNT(*) as size,
          COLLECT_LIST(a.normalized_purchases) as values_a, -- <== 製品の「評価」値はユーザーの「スケール済み購入回数」に基づく
          COLLECT_LIST(b.normalized_purchases) as values_b
-      FROM instacart.user_ratings a
-      INNER JOIN instacart.user_ratings b
+      FROM user_ratings a
+      INNER JOIN user_ratings b
         ON  a.user_id = b.user_id AND 
             a.split = b.split
       WHERE a.product_id < b.product_id AND
@@ -263,7 +286,7 @@ product_sim = (
   )
 
 # 既存のDeltaデータがある場合は削除する
-shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_sim', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/gold/product_sim', ignore_errors=True)
 
 # 製品の類似性をDeltaに書き込む(永続化)
 (
@@ -271,16 +294,22 @@ shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/product_sim', ignore_errors=True)
   .write
   .format('delta')
   .mode('overwrite')
-  .save('/tmp/mnt/instacart/gold/product_sim')  
+  .save(f'/tmp/{YOUR_NAME}/instacart/gold/product_sim')  
 )
 
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
+spark.sql(f'''
+  CREATE TABLE product_sim
+  USING DELTA
+  LOCATION '/tmp/{YOUR_NAME}/instacart/gold/product_sim'
+  ''')
 
 
 # COMMAND ----------
 
 # Deltaに書き込んだ結果を確認する
 display(
-  spark.table('DELTA.`/tmp/mnt/instacart/gold/product_sim`') 
+  spark.table('product_sim') 
 )
 
 # COMMAND ----------
@@ -295,7 +324,7 @@ display(
 # flip product A & product B
 (
   spark   
-  .table('DELTA.`/tmp/mnt/instacart/gold/product_sim`')
+  .table('product_sim')
   .selectExpr(
     'product_b as product_a',
     'product_a as product_b',
@@ -306,7 +335,7 @@ display(
   .write
   .format('delta')
   .mode('append') # <== 追記モードでDeltaに書き込む
-  .save('/tmp/mnt/instacart/gold/product_sim')
+  .save(f'/tmp/{YOUR_NAME}/instacart/gold/product_sim')
 )
 
 # COMMAND ----------
@@ -329,13 +358,13 @@ display(
     .write
       .format('delta')
       .mode('append') # <== 追記モードでDeltaに書き込む
-      .save('/tmp/mnt/instacart/gold/product_sim')
+      .save(f'/tmp/{YOUR_NAME}/instacart/gold/product_sim')
   )
 
 # COMMAND ----------
 
 # DBTITLE 1,キャッシュのリリース
-# MAGIC %sql  UNCACHE TABLE instacart.user_ratings
+# MAGIC %sql  UNCACHE TABLE user_ratings
 
 # COMMAND ----------
 
@@ -354,13 +383,13 @@ display(
 # COMMAND ----------
 
 # DBTITLE 1,複数回参照されるテーブルをキャッシュしておく
-# MAGIC %sql  CACHE TABLE instacart.user_ratings
+# MAGIC %sql  CACHE TABLE user_ratings
 
 # COMMAND ----------
 
 # DBTITLE 1,(補足1) 先ほど作った、製品間の距離(=類似度)
 # MAGIC %sql
-# MAGIC select * from DELTA.`/tmp/mnt/instacart/gold/product_sim`
+# MAGIC select * from product_sim
 
 # COMMAND ----------
 
@@ -374,8 +403,8 @@ display(
 # MAGIC     x.normalized_purchases, 
 # MAGIC     y.similarity
 # MAGIC     --SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score
-# MAGIC   FROM instacart.user_ratings x
-# MAGIC   INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
+# MAGIC   FROM user_ratings x
+# MAGIC   INNER JOIN product_sim y
 # MAGIC     ON x.product_id=y.product_a
 # MAGIC   WHERE 
 # MAGIC     x.split = 'calibration' AND x.user_id=148 -- <== user #148を抽出
@@ -409,8 +438,8 @@ display(
 # MAGIC     x.user_id,
 # MAGIC     y.product_b as product_id,
 # MAGIC     SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score -- <== ユーザーの「スケール済み購入評価」を重みにして、「製品の類似度」の加重平均をレコメンデーションスコアとして使う
-# MAGIC   FROM instacart.user_ratings x
-# MAGIC   INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
+# MAGIC   FROM user_ratings x
+# MAGIC   INNER JOIN product_sim y
 # MAGIC     ON x.product_id=y.product_a
 # MAGIC   WHERE 
 # MAGIC     x.split = 'calibration' AND x.user_id=148 -- <== user #148を抽出
@@ -438,7 +467,7 @@ display(
 # MAGIC   FROM (
 # MAGIC     SELECT DISTINCT 
 # MAGIC       user_id
-# MAGIC     FROM instacart.user_ratings
+# MAGIC     FROM user_ratings
 # MAGIC     ) 
 # MAGIC   WHERE rand() <= 0.10;
 # MAGIC 
@@ -471,7 +500,7 @@ eval_set = (
         user_id,
         product_id,
         normalized_purchases as r_t_ui -- <== 評価・比べるために「スケールされた製品評価」も出しておく
-      FROM instacart.user_ratings 
+      FROM user_ratings 
       WHERE split = 'evaluation' -- the test period
         ) m
     INNER JOIN (
@@ -485,8 +514,8 @@ eval_set = (
           x.user_id,
           y.product_b as product_id,
           SUM(x.normalized_purchases * y.similarity) / SUM(y.similarity) as recommendation_score  -- <==先ほどと同様にレコメンデーションスコアを算出
-        FROM instacart.user_ratings x
-        INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
+        FROM user_ratings x
+        INNER JOIN product_sim y
           ON x.product_id=y.product_a
         INNER JOIN random_users z   -- <== 上記でランダムに選ばれたユーザーだけに絞る
           ON x.user_id=z.user_id
@@ -560,7 +589,7 @@ for i in range(1,21,1):
                   user_id,
                   product_id,
                   normalized_purchases as r_t_ui
-                FROM instacart.user_ratings 
+                FROM user_ratings 
                 WHERE split = 'evaluation' -- "テスト用"期間のデータ
                   ) m
               INNER JOIN (
@@ -581,8 +610,8 @@ for i in range(1,21,1):
                       x.normalized_purchases,
                       y.similarity,
                       RANK() OVER (PARTITION BY x.user_id, x.product_id ORDER BY y.similarity DESC) as product_rank
-                    FROM instacart.user_ratings x
-                    INNER JOIN DELTA.`/tmp/mnt/instacart/gold/product_sim` y
+                    FROM user_ratings x
+                    INNER product_sim y
                       ON x.product_id=y.product_a
                     LEFT SEMI JOIN random_users z
                       ON x.user_id=z.user_id
@@ -621,7 +650,7 @@ display(
 # MAGIC %sql  
 # MAGIC UNCACHE TABLE instacart.user_ratings;
 # MAGIC UNCACHE TABLE random_users;
-# MAGIC UNCACHE TABLE DELTA.`/tmp/mnt/instacart/gold/product_sim`;
+# MAGIC UNCACHE TABLE product_sim;
 
 # COMMAND ----------
 
