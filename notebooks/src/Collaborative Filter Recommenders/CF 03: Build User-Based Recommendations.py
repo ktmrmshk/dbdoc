@@ -1,4 +1,27 @@
 # Databricks notebook source
+# MAGIC %md 
+# MAGIC 
+# MAGIC # 注意
+# MAGIC 
+# MAGIC 同じワークスペース内で複数のユーザー間でデータパスが衝突しないように、DeltaのDB名とファイルパスをユーザー毎にユニークにする必要があります。
+# MAGIC そのため、以下の変数`YOUR_NAME`を他のユーザーと異なる名前で設定してください。
+# MAGIC 
+# MAGIC 複数のnotebookにコードが分かれている場合、すべてのnotebookで同じ値に設定してください。
+# MAGIC 
+# MAGIC (各notebookの最初の部分に変数設定するセルがあります。)
+
+# COMMAND ----------
+
+YOUR_NAME = 'YOUR_UNIQUE_NAME'
+
+# ユニークなDB名を作成
+dbname = f'instacart_{YOUR_NAME}'
+print(f'>>> dbname => {dbname}')
+
+spark.sql(f'USE {dbname}')
+
+# COMMAND ----------
+
 # MAGIC %md # Chapter3. ユーザーベースのリコメンデーションの構築
 
 # COMMAND ----------
@@ -44,8 +67,9 @@ import shutil
 def to_vector(size, index_list, value_list):
     ind, val = zip(*sorted(zip(index_list, value_list)))
     return Vectors.sparse(size, ind, val)
-    
-_ = spark.udf.register('to_vector', to_vector)
+
+# SQL用にUDFを登録
+spark.udf.register('to_vector', to_vector)
 
 # 評価ベクタを生成する
 ratings_vectors = spark.sql('''
@@ -58,7 +82,7 @@ ratings_vectors = spark.sql('''
     FROM ( 
       SELECT
         user_id,
-        (SELECT max(product_id) + 1 FROM instacart.products) as size,
+        (SELECT max(product_id) + 1 FROM products) as size,
         COLLECT_LIST(product_id) as index_list,
         COLLECT_LIST(normalized_purchases) as value_list
       FROM ( -- all users, ratings
@@ -66,7 +90,7 @@ ratings_vectors = spark.sql('''
           user_id,
           product_id,
           normalized_purchases
-        FROM instacart.user_ratings
+        FROM user_ratings
         WHERE split = 'calibration'
         )
       GROUP BY user_id
@@ -274,11 +298,11 @@ similar_ratings = spark.sql('''
           SELECT user_id, similarity_rescaled
           FROM similar_users
           ) x
-        CROSS JOIN instacart.products y
+        CROSS JOIN products y
         ) m
       LEFT OUTER JOIN ( -- 近傍の10人の評価したproduct_idとその評価値を参照する
         SELECT x.user_id, x.product_id, x.normalized_purchases 
-        FROM instacart.user_ratings x 
+        FROM user_ratings x 
         LEFT SEMI JOIN similar_users y 
           ON x.user_id=y.user_id 
         WHERE x.split = 'calibration'
@@ -332,7 +356,7 @@ display(product_ratings)
 # ユーザー#148の実際の製品評価を抽出する
 user_product_ratings = (
   spark
-    .table('instacart.user_ratings')
+    .table('user_ratings')
     .filter("user_id = 148 and split = 'calibration'")
   )
 
@@ -401,10 +425,6 @@ spark.conf.set('spark.sql.shuffle.partitions', max_partition_count)
 
 # COMMAND ----------
 
-display(hashed_vectors)
-
-# COMMAND ----------
-
 # DBTITLE 1,ランダムサンプルで類似ユーザーをピックアップする
 # サンプリングレート
 sample_fraction = 0.10
@@ -416,7 +436,7 @@ max_distance = math.sqrt(2)
 min_score = 1 / (1 + math.sqrt(2))
 
 # 過去のデータがあれば削除しておく
-shutil.rmtree('/dbfs/tmp/mnt/instacart/gold/similarity_results', ignore_errors=True)
+shutil.rmtree(f'/dbfs/tmp/{YOUR_NAME}/instacart/gold/similarity_results', ignore_errors=True)
 
 # perform similarity join for sample of users
 sample_comparisons = (
@@ -441,12 +461,21 @@ sample_comparisons = (
     .write
     .format('delta')
     .mode('overwrite')
-    .save('/tmp/mnt/instacart/gold/similarity_results')
+    .save(f'/tmp/{YOUR_NAME}/instacart/gold/similarity_results')
   )
 
-display(
-  spark.table( 'DELTA.`/tmp/mnt/instacart/gold/similarity_results`' )
-  )
+# SQLでもデータが参照できるようにテーブルに登録する(DeltaファイルとHiveメタストアの関連づけ)
+spark.sql(f'''
+  CREATE TABLE similarity_results
+  USING DELTA
+  LOCATION '/tmp/{YOUR_NAME}/instacart/gold/similarity_results'
+  ''')
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- 上記の結果を確認
+# MAGIC SELECT * FROM similarity_results
 
 # COMMAND ----------
 
@@ -472,7 +501,7 @@ similar_users =  (
           user_b,
           similarity,
           ROW_NUMBER() OVER (PARTITION BY user_a ORDER BY similarity DESC) as seq -- <== ここで類似度順になれべている。
-        FROM DELTA.`/tmp/mnt/instacart/gold/similarity_results`
+        FROM similarity_results
         )
       WHERE seq <= {0}      -- <== ここで類似度の高いxx人をピックアップする条件をつけている
       '''.format(number_of_customers)
@@ -505,14 +534,14 @@ similar_ratings = spark.sql('''
         y.product_id,
         x.similarity
       FROM similar_users x
-      CROSS JOIN instacart.products y
+      CROSS JOIN products y
       ) m
     LEFT OUTER JOIN ( -- retrieve ratings actually provided by similar users
       SELECT 
         user_id as user_b, 
         product_id, 
         normalized_purchases 
-      FROM instacart.user_ratings
+      FROM user_ratings
       WHERE split = 'calibration'
         ) n
       ON m.user_b=n.user_b AND m.product_id=n.product_id
@@ -587,7 +616,7 @@ eval_set = (
         user_id,
         product_id,
         normalized_purchases as r_t_ui
-      FROM instacart.user_ratings 
+      FROM user_ratings 
       WHERE split = 'evaluation' -- テスト期間のデータ
         ) x
     INNER JOIN (
@@ -637,8 +666,8 @@ display(
 # MAGIC   SELECT
 # MAGIC     x.product_id,
 # MAGIC     COALESCE(y.normalized_purchases,0.0) as normalized_purchases
-# MAGIC   FROM (SELECT product_id FROM instacart.products) x
-# MAGIC   LEFT OUTER JOIN instacart.naive_ratings y
+# MAGIC   FROM (SELECT product_id FROM products) x
+# MAGIC   LEFT OUTER JOIN naive_ratings y
 # MAGIC     ON x.product_id=y.product_id
 # MAGIC   WHERE split = 'calibration'
 # MAGIC   )
@@ -665,7 +694,7 @@ display(
 # MAGIC       p.user_id,
 # MAGIC       p.product_id,
 # MAGIC       p.normalized_purchases as r_t_ui
-# MAGIC     FROM instacart.user_ratings p
+# MAGIC     FROM user_ratings p
 # MAGIC     INNER JOIN (SELECT DISTINCT user_a as user_id FROM similar_users) q
 # MAGIC       ON p.user_id=q.user_id
 # MAGIC     WHERE p.split = 'evaluation' -- the test period
@@ -678,8 +707,8 @@ display(
 # MAGIC       SELECT
 # MAGIC         x.product_id,
 # MAGIC         COALESCE(y.normalized_purchases,0.0) as normalized_purchases
-# MAGIC       FROM (SELECT product_id FROM instacart.products) x
-# MAGIC       LEFT OUTER JOIN instacart.naive_ratings y
+# MAGIC       FROM (SELECT product_id FROM products) x
+# MAGIC       LEFT OUTER JOIN naive_ratings y
 # MAGIC         ON x.product_id=y.product_id
 # MAGIC       WHERE split = 'calibration'
 # MAGIC       )
