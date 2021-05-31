@@ -201,7 +201,7 @@ dbutils.fs.head(f'{delta_path}/_delta_log/00000000000000000000.json')
 
 # COMMAND ----------
 
-# DBTITLE 1,削除を行う
+# DBTITLE 1,削除を行う (従来のデータレイクでは不可)
 # MAGIC %sql
 # MAGIC -- 'WA'州を削除する
 # MAGIC Delete From LBS Where State = 'WA';
@@ -212,7 +212,7 @@ dbutils.fs.head(f'{delta_path}/_delta_log/00000000000000000000.json')
 
 # COMMAND ----------
 
-# DBTITLE 1,更新をする
+# DBTITLE 1,更新をする (従来のデータレイクでは不可)
 # MAGIC %sql
 # MAGIC -- 'NY'州のローン申込額を20倍にする!
 # MAGIC Update LBS Set loan_amnt = loan_amnt * 20 Where State = 'NY';
@@ -263,7 +263,7 @@ display(merge_df)
 
 # COMMAND ----------
 
-# DBTITLE 1,マージする
+# DBTITLE 1,マージする (従来のデータレイクではMergeクエリは不可)
 # MAGIC %sql
 # MAGIC -- マージオペレーションを行う
 # MAGIC Merge Into LBS as target
@@ -312,7 +312,7 @@ new_df.write.format('delta').mode('append').save(delta_path)
 
 # COMMAND ----------
 
-# DBTITLE 1,既存データへ追加 (スキーマが融合される)
+# DBTITLE 1,既存データへ追加 (スキーマが融合される)   :(従来のデータレイクでは不可)
 # スキーマが違うデータセットへ書き込む (with スキーマエボリューション)
 new_df.write.format('delta').option('mergeSchema','true').mode('append').save(delta_path)
 
@@ -336,14 +336,14 @@ new_df.write.format('delta').option('mergeSchema','true').mode('append').save(de
 
 # COMMAND ----------
 
-# DBTITLE 1,もう一度データ変更管理を見てみよう
+# DBTITLE 1,もう一度データ変更管理を見てみよう (従来のデータレイク・DWHでは不可)
 # MAGIC %sql
 # MAGIC -- Describe History機能でデータの変更履歴を監査
 # MAGIC Describe History LBS
 
 # COMMAND ----------
 
-# DBTITLE 1,過去へ戻ろう (その一)
+# DBTITLE 1,過去へ戻ろう (その一)  : (従来のデータレイク・DWHでは不可)
 # MAGIC %sql
 # MAGIC -- バージョンを指定してスナップショットを取得
 # MAGIC Select * 
@@ -351,7 +351,7 @@ new_df.write.format('delta').option('mergeSchema','true').mode('append').save(de
 
 # COMMAND ----------
 
-# DBTITLE 1,過去へ戻ろう (その二)
+# DBTITLE 1,過去へ戻ろう (その二)  : (従来のデータレイク・DWHでは不可)
 # 時間をしてしてスナップショットを取得
 desiredTimestamp = spark.sql("Select timestamp From (Describe History LBS) Order By timestamp Desc").take(10)[-1].timestamp
 
