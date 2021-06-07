@@ -13,6 +13,20 @@
 
 # COMMAND ----------
 
+# MAGIC %md ## HorovodRunner
+# MAGIC 
+# MAGIC HorovodRunnerは、Horovodフレームワークを使ってDatabricks上で分散した深層学習のワークロードを実行するための一般的なAPIです。
+# MAGIC 
+# MAGIC ![arc](https://docs.microsoft.com/ja-jp/azure/databricks/_static/images/distributed-deep-learning/horovod-runner.png)
+# MAGIC 
+# MAGIC HorovodをSparkのバリアモードと統合することで、DatabricksはSpark上で長時間実行される深層学習トレーニングジョブに高い安定性を提供することができます。HorovodRunnerは、Horovodフックを持つ深層学習トレーニングコードを含むPythonメソッドを受け取ります。
+# MAGIC 
+# MAGIC HorovodRunnerは、ドライバ上でメソッドをpickle化し、Sparkのワーカーに配布します。Horovod MPIジョブは、バリア実行モードを使用してSparkジョブとして埋め込まれます。
+# MAGIC 
+# MAGIC 最初の実行者は `BarrierTaskContext` を用いて全てのタスク実行者の IP アドレスを収集し、`mpirun` を用いて Horovod ジョブをトリガーします。各Python MPIプロセスは、ピクルス化されたユーザプログラムをロードし、デシリアライズして実行します。
+
+# COMMAND ----------
+
 # MAGIC %md ## データを準備する関数を作成する
 # MAGIC 
 # MAGIC `get_dataset()`関数は学習用のデータを準備します。この関数は `rank` と `size` を引数に取るので，シングルノードと分散型のどちらの学習にも利用できます．Horovodでは、`rank`はユニークなプロセスIDで、`size`はプロセスの総数です。
@@ -201,13 +215,13 @@ def train_hvd(checkpoint_path, learning_rate=1.0):
                 loss='categorical_crossentropy',
                 metrics=['accuracy'])
 
-  # Create a callback to broadcast the initial variable states from rank 0 to all other processes.
-  # This is required to ensure consistent initialization of all workers when training is started with random weights or restored from a checkpoint.
+  # ランク0の初期変数の状態を他のすべてのプロセスにブロードキャストするコールバックを作成する
+  # ランダムなウェイトでトレーニングを開始したり、チェックポイントから復元したりする際に、すべてのワーカーの初期化を一貫して行うために必要です。
   callbacks = [
       hvd.callbacks.BroadcastGlobalVariablesCallback(0),
   ]
 
-  # Save checkpoints only on worker 0 to prevent conflicts between workers
+  # ワーカー間のコンフリクトを防ぐために、ワーカー0でのみチェックポイントを保存する
   if hvd.rank() == 0:
       callbacks.append(keras.callbacks.ModelCheckpoint(checkpoint_path, save_weights_only = True))
 
@@ -238,6 +252,8 @@ from sparkdl import HorovodRunner
 checkpoint_path = checkpoint_dir + '/checkpoint-{epoch}.ckpt'
 learning_rate = 0.1
 hr = HorovodRunner(np=2)
+
+# 実行!
 hr.run(train_hvd, checkpoint_path=checkpoint_path, learning_rate=learning_rate)
 
 # COMMAND ----------
@@ -256,6 +272,8 @@ hvd_model = get_model(num_classes)
 hvd_model.compile(optimizer=tf.keras.optimizers.Adadelta(lr=learning_rate),
                 loss='categorical_crossentropy',
                 metrics=['accuracy'])
+
+# チェックポイントから最適なウェイトパラメータでモデルをロードする
 hvd_model.load_weights(tf.train.latest_checkpoint(os.path.dirname(checkpoint_path)))
 
 # COMMAND ----------
