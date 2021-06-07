@@ -9,10 +9,11 @@
 # MAGIC 
 # MAGIC 以下のステップで説明していきます:
 # MAGIC - データの読み込み、および、前処理(preprocessing)
-# MAGIC - Part 1. TensorFlow Kerasでニューラルネットワークモデルを作成し、インラインのTensorBoardでトレーニングを表示する
-# MAGIC - Part 2. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化と、オートロギングによる結果の保存
-# MAGIC - Part 3. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する 
-# MAGIC - Part 4. MLflowにモデルを登録し、そのモデルを使って予測を行う
+# MAGIC - Part 1. Kerasの基礎 (シングルコンピュート)
+# MAGIC - Part 2. MLflowでKerasの実験結果をトラックする (シングルコンピュート)
+# MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 (分散処理)
+# MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する (シングルコンピュート)
+# MAGIC - Part 5. MLflowにモデルを登録し、そのモデルを使って予測を行う (分散処理 or シングルコンピュート)
 # MAGIC 
 # MAGIC ### セットアップ
 # MAGIC - Databricks Runtime ML 7.0以上を使用しています。このノートブックでは、ニューラルネットワークの学習結果の表示にTensorBoardを使用しています。使用しているDatabricks Runtimeのバージョンによって、TensorBoardを起動する方法が異なります。
