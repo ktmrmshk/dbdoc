@@ -59,6 +59,15 @@ X_test = scaler.transform(X_test)
 
 # COMMAND ----------
 
+# T_train, y_trainデータの確認
+import pandas as pd
+display( 
+  pd.concat(
+    [pd.DataFrame(X_train, columns=cal_housing.feature_names), pd.DataFrame(y_train, columns=["label"])], axis=1)
+)
+
+# COMMAND ----------
+
 # MAGIC %md ## Part 1. モデルの作成、TensorBoradによる視覚化
 
 # COMMAND ----------
@@ -80,11 +89,13 @@ def create_model():
 
 # COMMAND ----------
 
+# NNのモデル構成(インスタンス化)
 model = create_model()
 
-model.compile(loss="mse",
-              optimizer="Adam",
-              metrics=["mse"])
+# ハイパーパラメータをセットしてコンパイル
+model.compile(loss="mse",  # <= Loss関数としてMSE(Mean Squared Error)を使用
+              optimizer="Adam", # <= アルゴリズム"Adam"を使用して最適化
+              metrics=["mse"]) # <= メトリックとしてMSEを用いる
 
 # COMMAND ----------
 

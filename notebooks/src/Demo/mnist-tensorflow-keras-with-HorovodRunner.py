@@ -76,29 +76,36 @@ def get_model(num_classes):
 
 # COMMAND ----------
 
-# Specify training parameters
+# ハイパーパラメータを設定
 batch_size = 128
 epochs = 2
 num_classes = 10
 
+
 def train(learning_rate=1.0):
   from tensorflow import keras
   
+  # データセットを学習用、評価用に分割する
   (x_train, y_train), (x_test, y_test) = get_dataset(num_classes)
   model = get_model(num_classes)
 
-  # Specify the optimizer (Adadelta in this example), using the learning rate input parameter of the function so that Horovod can adjust the learning rate during training
+  # 最適化アルゴリズムの指定(例: Adadelta)
+  #   => Horovodが学習率(learning rate)の調整で使用する
   optimizer = keras.optimizers.Adadelta(lr=learning_rate)
 
+  # モデルのコンパイル
   model.compile(optimizer=optimizer,
                 loss='categorical_crossentropy',
                 metrics=['accuracy'])
 
+  # モデルのfit(学習)を実施
   model.fit(x_train, y_train,
             batch_size=batch_size,
             epochs=epochs,
             verbose=2,
             validation_data=(x_test, y_test))
+  
+  # 学習が完了したモデルを返す
   return model
 
 # COMMAND ----------
@@ -116,8 +123,11 @@ model = train(learning_rate=0.1)
 
 # COMMAND ----------
 
+# 損失(loss)と精度(accuracy)を算出
 _, (x_test, y_test) = get_dataset(num_classes)
 loss, accuracy = model.evaluate(x_test, y_test, batch_size=128)
+
+# 結果の出力
 print("loss:", loss)
 print("accuracy:", accuracy)
 
@@ -135,52 +145,58 @@ print("accuracy:", accuracy)
 import os
 import time
 
-# Remove any existing checkpoint files
+# (繰り返しデモのため)既存のディレクトリがある場合は削除
 dbutils.fs.rm(("/ml/MNISTDemo/train"), recurse=True)
 
-# Create directory
-checkpoint_dir = '/dbfs/ml/MNISTDemo/train/{}/'.format(time.time())
+# チェックポイント用のディレクトリを作成
+now = time.time()
+checkpoint_dir = f'/dbfs/ml/MNISTDemo/train/{now}/'
 os.makedirs(checkpoint_dir)
+
+# ディレクトリ名の確認
 print(checkpoint_dir)
 
 # COMMAND ----------
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC The following cell shows how to modify the single-node code of the previously defined `train()` function to take advantage of distributed training.  
+# MAGIC 以下では、先に定義した`train()`関数のシングルノードコードを修正して，分散学習を利用する関数を定義しています。
 
 # COMMAND ----------
 
 def train_hvd(checkpoint_path, learning_rate=1.0):
   
-  # Import tensorflow modules to each worker
+  # 各種モジュールのimport (このコードが各worker上で走るのでここで宣言)
   from tensorflow.keras import backend as K
   from tensorflow.keras.models import Sequential
   import tensorflow as tf
   from tensorflow import keras
   import horovod.tensorflow.keras as hvd
   
-  # Initialize Horovod
+  # Horovodの初期化
   hvd.init()
 
-  # Pin GPU to be used to process local rank (one GPU per process)
-  # These steps are skipped on a CPU cluster
+  # ローカルランクの計算で使用するGPUをピン留めしておく(1GPU/1Proccess)
+  # (CPU ONLYクラスタの場合このステップはスキップされます)
   gpus = tf.config.experimental.list_physical_devices('GPU')
   for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
   if gpus:
     tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
-  # Call the get_dataset function you created, this time with the Horovod rank and size
+  # 作成したget_dataset()関数を、ここではHorovodのランクとサイズを引数にして呼び出します。
   (x_train, y_train), (x_test, y_test) = get_dataset(num_classes, hvd.rank(), hvd.size())
   model = get_model(num_classes)
 
-  # Adjust learning rate based on number of GPUs
+  
+  # 学習率(Learning Rate)はGPU数に応じて調整されます
   optimizer = keras.optimizers.Adadelta(lr=learning_rate * hvd.size())
 
-  # Use the Horovod Distributed Optimizer
+  
+  # Horovodの分散オプティマイザを使用する
   optimizer = hvd.DistributedOptimizer(optimizer)
 
+  # モデルのコンパイル
   model.compile(optimizer=optimizer,
                 loss='categorical_crossentropy',
                 metrics=['accuracy'])
