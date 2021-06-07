@@ -59,7 +59,7 @@ X_test = scaler.transform(X_test)
 
 # COMMAND ----------
 
-# T_train, y_trainデータの確認
+# X_train, y_trainデータの確認
 import pandas as pd
 display( 
   pd.concat(
@@ -77,10 +77,10 @@ display(
 # COMMAND ----------
 
 def create_model():
-  model = Sequential()
-  model.add(Dense(20, input_dim=8, activation="relu"))
-  model.add(Dense(20, activation="relu"))
-  model.add(Dense(1, activation="linear"))
+  model = Sequential() # NNレイヤのインスタンスを用意
+  model.add(Dense(20, input_dim=8, activation="relu"))  # <= Inputレイヤ 
+  model.add(Dense(20, activation="relu"))  # <= 中間レイヤ
+  model.add(Dense(1, activation="linear")) # <= Outputレイヤ
   return model
 
 # COMMAND ----------
@@ -99,7 +99,7 @@ model.compile(loss="mse",  # <= Loss関数としてMSE(Mean Squared Error)を使
 
 # COMMAND ----------
 
-# MAGIC %md ### コールバックの作成
+# MAGIC %md ### モデル学習(TensorBoard向けのコールバック作成を含む)
 
 # COMMAND ----------
 
@@ -109,11 +109,19 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 experiment_log_dir = "/dbfs/tmp/kitamura123/tb"
 checkpoint_path = "/dbfs/tmp/kitamura123/keras_checkpoint_weights.ckpt"
 
+
+# fit関数に入れるパラメータ(関数)を設定
+# (Tensorboardを使用するためのコード)
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=experiment_log_dir)
 model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, verbose=1, save_best_only=True)
 early_stopping = EarlyStopping(monitor="loss", mode="min", patience=3)
 
-history = model.fit(X_train, y_train, validation_split=.2, epochs=35, callbacks=[tensorboard_callback, model_checkpoint, early_stopping])
+
+# 学習(fit)の実行
+history = model.fit(
+  X_train, y_train, validation_split=.2, epochs=35,
+  callbacks=[tensorboard_callback, model_checkpoint, early_stopping]
+)
 
 # COMMAND ----------
 
@@ -138,16 +146,74 @@ model.evaluate(X_test, y_test)
 
 # COMMAND ----------
 
-# MAGIC %md ## Part 2. HyperoptとMLflowを用いたハイパーパラメータチューニング
+# MAGIC %md
+# MAGIC 
+# MAGIC ## Part2: MLFlowを用いて、学習をトラックする
+# MAGIC 
+# MAGIC 上記で実施したモデル学習をMLflowトラックするためのコードに書き換える(ほぼ同じコード)
+
+# COMMAND ----------
+
+import mlflow
+mlflow.autolog() # <= MLflowのAutoトラッキングを有効化する
+
+
+# 学習結果のプロットファイルを出力するための関数を用意(これをMLflowでトラックする際に使用)
+import matplotlib.pyplot as plt
+def viewModelLoss(history):
+  plt.clf()
+  plt.semilogy(history.history["loss"], label="train_loss")
+  plt.title("Model Loss")
+  plt.ylabel("Loss")
+  plt.xlabel("Epoch")
+  plt.legend()
+  return plt
+
+
+
+
+# このwith節内のコードをMLflowが自動でトラックする
+with mlflow.start_run():
+  
+  # NNレイヤのインスタンスを用意
+  model = Sequential() 
+  model.add(Dense(20, input_dim=8, activation="relu"))  # <= Inputレイヤ 
+  model.add(Dense(20, activation="relu"))  # <= 中間レイヤ
+  model.add(Dense(1, activation="linear")) # <= Outputレイヤ
+  
+  # ハイパーパラメータをセットしてコンパイル
+  model.compile(loss="mse",  # <= Loss関数としてMSE(Mean Squared Error)を使用
+              optimizer="Adam", # <= アルゴリズム"Adam"を使用して最適化
+              metrics=["mse"]) # <= メトリックとしてMSEを用いる
+  
+  # 学習を実施(fit)
+  history = model.fit(X_train, y_train, validation_split=.2, epochs=35)
+  
+  # 評価
+  model.evaluate(X_test, y_test)
+  
+  # mlflowのタグをつける
+  mlflow.log_param('Model_Type', 'ABC123')
+  
+  # mlflowで画像も含め、あらゆるデータを記録しておく
+  fig = viewModelLoss(history)
+  fig.savefig("train-validation-loss.png")
+  mlflow.log_artifact("train-validation-loss.png")
+  
+
+# COMMAND ----------
+
+# MAGIC %md ## Part 3. MLflow + Hyperoptを用いたハイパーパラメータチューニング
 # MAGIC 
 # MAGIC [Hyperopt](https://github.com/hyperopt/hyperopt)は、ハイパーパラメータチューニングのためのPythonライブラリです。Databricks Runtime for MLには、自動化されたMLflowのトラッキングを含む、最適化され強化されたHyperoptのバージョンが含まれています。Hyperoptの使用に関する詳細は、[Hyperopt documentation](https://github.com/hyperopt/hyperopt/wiki/FMin)を参照してください。
 
 # COMMAND ----------
 
-# MAGIC %md ### ニューラルネットワークの作成 (hiddenレイヤ数を引数にした関数)
+# MAGIC %md ### ニューラルネットワークの作成 (Input, Hiddenレイヤ数を引数にした関数)
 
 # COMMAND ----------
 
+# Input, Hiddenレイヤ数を引数に、モデルのインスタンスを作成する関数
 def create_model(n):
   model = Sequential()
   model.add(Dense(int(n["dense_l1"]), input_dim=8, activation="relu"))
@@ -158,11 +224,15 @@ def create_model(n):
 # COMMAND ----------
 
 # MAGIC %md ### Hyperoptの目的関数(objective function)の作成
+# MAGIC 
+# MAGIC HyperOptは与えられた目的関数を最小にするようにハイパーパラメータを探索する。基本的に、この関数の中でモデル学習を実施して、モデルの評価値(小さい方がベターという値、例えばMSEなど)を戻り値として返すような目的関数を実装する。
 
 # COMMAND ----------
 
 from hyperopt import fmin, hp, tpe, STATUS_OK, SparkTrials
 
+# Hyperoptに渡す目的関数:
+# n: Hyperoptによって渡されるハイパーパラメータが入る。具体的には下セルの`space`で定義されている内容。
 def runNN(n):
   # Import tensorflow 
   import tensorflow as tf
@@ -185,7 +255,7 @@ def runNN(n):
 
   # モデルの評価
   score = model.evaluate(X_test, y_test, verbose=0)
-  obj_metric = score[0]  
+  obj_metric = score[0]
   return {"loss": obj_metric, "status": STATUS_OK}
 
 # COMMAND ----------
@@ -278,7 +348,7 @@ new_model.compile(loss="mse",
 # MAGIC %md 
 # MAGIC 
 # MAGIC `autolog()`がアクティブな場合、MLflowは自動的にrunを終了しません。新しいランを開始してオートログする前に、Cmd28で開始したrunを終了する必要があります。 
-# MAGIC 詳しくは、https://www.mlflow.org/docs/latest/tracking.html#automatic-logging。
+# MAGIC 詳しくは、https://www.mlflow.org/docs/latest/tracking.html#automatic-logging 。
 
 # COMMAND ----------
 
