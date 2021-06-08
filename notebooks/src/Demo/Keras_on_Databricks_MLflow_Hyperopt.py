@@ -20,6 +20,18 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,ユニークなパス名を設定(ユーザー間の衝突回避)
+import re
+
+# Username を取得。
+username_raw = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
+# Username の英数字以外を除去し、全て小文字化。Usernameをファイルパスやデータベース名の一部で使用可能にするため。
+username = re.sub('[^A-Za-z0-9]+', '_', username_raw).lower()
+
+print(f'>>> username => {username}')
+
+# COMMAND ----------
+
 import tensorflow as tf
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.models import Sequential
@@ -106,9 +118,13 @@ model.compile(loss="mse",  # <= Loss関数としてMSE(Mean Squared Error)を使
 
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
-# <username>　を適宜置換してください!!
-experiment_log_dir = "/dbfs/tmp/kitamura123/tb"
-checkpoint_path = "/dbfs/tmp/kitamura123/keras_checkpoint_weights.ckpt"
+# 中間ファイルの保存先を指定
+experiment_log_dir = f"/dbfs/tmp/{username}/tb"
+checkpoint_path = f"/dbfs/tmp/{username}/keras_checkpoint_weights.ckpt"
+
+# 過去の中間ファイル残骸を削除
+dbutils.fs.rm(experiment_log_dir, True)
+dbutils.fs.rm(checkpoint_path, True)
 
 
 # fit関数に入れるパラメータ(関数)を設定
@@ -191,6 +207,7 @@ with mlflow.start_run():
   
   # 評価
   model.evaluate(X_test, y_test)
+  
   
   # mlflowのタグをつける
   mlflow.log_param('Model_Type', 'ABC123')
@@ -516,6 +533,46 @@ model_version = 1
 model = mlflow.pyfunc.load_model(
     model_uri=f"models:/{model_name}/{model_version}"
 )
+
+# COMMAND ----------
+
+# MAGIC %md ## (参考) デプロイの推論(MLflowのRESTモデルサービングを使用する)
+# MAGIC 
+# MAGIC MLflowのモデルレジストリのUIからRESTサービスとしてモデルをデプロイすることが可能です。
+# MAGIC RESTサービスのモデルServingを使用すると、以下のようにCurlからHTPリクエストによってモデルのスコアリング(推定)が可能です。
+
+# COMMAND ----------
+
+# 入力データを用意(HTTPリクエストのBodyで送信される)
+data_json = json.dumps( pd_df[0:3].to_dict(orient="split") )
+
+# Access Tokenを用意(Databricksのユーザー設定から発行できます)
+token = 'xxxxxxxxxxxxxxxxxxxxxxx'
+
+# モデルサービングのURL (MLflowのモデルサービングUIから参照可能です)
+url = 'https://demo.cloud.databricks.com/model/ktmr_keras_demo/1/invocations'
+
+
+# CURL コマンドの文字列を生成
+# (pythonであればrequestsライブラリを使用するのが一般的。ここではデモのためcurlコマンドを使用する)
+cmd = f'''curl -X POST -u token:{token} {url} -H 'Content-Type: application/json' -d '{data_json}' '''
+print(f'cmd => {cmd}')
+
+
+# COMMAND ----------
+
+# スコアリング結果がレスポンスとして返ります。
+
+# 例:  [{"0": 137.89443969726562}, {"0": 160.4019012451172}, {"0": 136.89523315429688}]
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC **注意**
+# MAGIC 
+# MAGIC モデルサービング機能を使用するとクラスタが起動し続けます。
+# MAGIC 使用後は、必ずモデルサービングのUIからサービングをSTOPしてください。
 
 # COMMAND ----------
 
