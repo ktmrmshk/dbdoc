@@ -8,12 +8,12 @@
 # MAGIC このチュートリアルでは、小さなデータセットを使って、TensorFlow Keras、Hyperopt、MLflowを使ってDatabricksで深層学習モデルを開発する方法を紹介します。
 # MAGIC 
 # MAGIC 以下のステップで説明していきます:
-# MAGIC - データの読み込み、および、前処理(preprocessing)
-# MAGIC - Part 1. Kerasの基礎 (シングルコンピュート)
-# MAGIC - Part 2. MLflowでKerasの実験結果をトラックする (シングルコンピュート)
-# MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 (分散処理)
-# MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する (シングルコンピュート)
-# MAGIC - Part 5. MLflowにモデルを登録し、そのモデルを使って予測を行う (分散処理 or シングルコンピュート)
+# MAGIC - データの読み込み、および、前処理 --- (preprocessing, この例ではシングルコンピュート。ただし、Spakr分散処理も可)
+# MAGIC - Part 1. Kerasの基礎 --- (シングルコンピュート)
+# MAGIC - Part 2. MLflowの基礎 - Kerasの実験結果をトラックする --- (シングルコンピュート)
+# MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 --- (Spark分散処理)
+# MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する --- (シングルコンピュート)
+# MAGIC - Part 5. MLflowにモデルを登録し、そのモデルを使って予測を行う --- (Spark分散処理 or シングルコンピュート)
 # MAGIC 
 # MAGIC ### セットアップ
 # MAGIC - Databricks Runtime ML 7.0以上を使用しています。このノートブックでは、ニューラルネットワークの学習結果の表示にTensorBoardを使用しています。使用しているDatabricks Runtimeのバージョンによって、TensorBoardを起動する方法が異なります。
@@ -29,7 +29,7 @@ import mlflow.tensorflow
 
 # COMMAND ----------
 
-# MAGIC %md ## データの読み込み、および、前処理(preprocessing)
+# MAGIC %md ## Part0. データの読み込み、および、前処理(preprocessing)
 # MAGIC この例では`scikit-learn`のCalifornia Housingデータセットを使用していま
 
 # COMMAND ----------
@@ -46,6 +46,15 @@ X_train, X_test, y_train, y_test = train_test_split(cal_housing.data,
 
 # COMMAND ----------
 
+# X_train, y_trainデータの確認
+import pandas as pd
+display( 
+  pd.concat(
+    [pd.DataFrame(X_train, columns=cal_housing.feature_names), pd.DataFrame(y_train, columns=["label"])], axis=1)
+)
+
+# COMMAND ----------
+
 # MAGIC %md ### 特徴量のスケーリング
 # MAGIC 
 # MAGIC ニューラルネットワークを扱う際には，特徴量のスケーリングが重要になります．このノートブックでは，`scikit-learn`関数の`StandardScaler`を使用します．
@@ -57,15 +66,6 @@ from sklearn.preprocessing import StandardScaler
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
-
-# COMMAND ----------
-
-# X_train, y_trainデータの確認
-import pandas as pd
-display( 
-  pd.concat(
-    [pd.DataFrame(X_train, columns=cal_housing.feature_names), pd.DataFrame(y_train, columns=["label"])], axis=1)
-)
 
 # COMMAND ----------
 
@@ -169,7 +169,6 @@ def viewModelLoss(history):
   plt.xlabel("Epoch")
   plt.legend()
   return plt
-
 
 
 
@@ -283,7 +282,7 @@ space = {
 # COMMAND ----------
 
 # `parallelism`を指定しない場合は、Sparkのexecutor数がデフォルトで使用される
-spark_trials = SparkTrials()
+spark_trials = SparkTrials(parallelism=24)
 
 # COMMAND ----------
 
@@ -306,29 +305,32 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# MAGIC %md ## Part 3. 最後に最適なハイパーパラメータを使ってモデルを構築する
+# MAGIC %md ## Part 4. 最後に最適なハイパーパラメータを使ってモデルを構築する
 
 # COMMAND ----------
 
 import hyperopt
 
+# 最適化の結果パラメータの確認
 print(hyperopt.space_eval(space, best_hyperparam))
 
-# COMMAND ----------
-
+# 最適化の結果パラメータを取り出す
 first_layer = hyperopt.space_eval(space, best_hyperparam)["dense_l1"]
 second_layer = hyperopt.space_eval(space, best_hyperparam)["dense_l2"]
 learning_rate = hyperopt.space_eval(space, best_hyperparam)["learning_rate"]
 optimizer = hyperopt.space_eval(space, best_hyperparam)["optimizer"]
 
+
 # COMMAND ----------
 
-# Get optimizer and update with learning_rate value
+# 再度上記のパラメータで学習を実施する
+
+# 最適なパラメータでOptimizerを設定する
 optimizer_call = getattr(tf.keras.optimizers, optimizer)
 optimizer = optimizer_call(learning_rate=learning_rate)
 
-# COMMAND ----------
 
+# モデルのインスタンス化 (最適なパラメータ)
 def create_new_model():
   model = Sequential()
   model.add(Dense(first_layer, input_dim=8, activation="relu"))
@@ -336,13 +338,13 @@ def create_new_model():
   model.add(Dense(1, activation="linear"))
   return model
 
-# COMMAND ----------
 
+# 上記の関数を実行する
 new_model = create_new_model()
-  
 new_model.compile(loss="mse",
                 optimizer=optimizer,
                 metrics=["mse"])
+
 
 # COMMAND ----------
 
@@ -359,7 +361,7 @@ mlflow.end_run()
 
 import matplotlib.pyplot as plt
 
-mlflow.tensorflow.autolog()
+# mlflow.tensorflow.autolog()
 
 with mlflow.start_run() as run:
   
@@ -369,9 +371,9 @@ with mlflow.start_run() as run:
   kerasURI = run.info.artifact_uri
   
   # Evaluate model on test dataset and log result
-  mlflow.log_param("eval_result", new_model.evaluate(X_test, y_test)[0])
+  #mlflow.log_param("eval_result", new_model.evaluate(X_test, y_test)[0])
   
-  # Plot predicted vs known values for a quick visual check of the model and log the plot as an artifact
+  # プロットデータもMLflowに記録しておく
   keras_pred = new_model.predict(X_test)
   plt.plot(y_test, keras_pred, "o", markersize=2)
   plt.xlabel("observed value")
@@ -381,33 +383,139 @@ with mlflow.start_run() as run:
 
 # COMMAND ----------
 
-# MAGIC %md ## Part 4. MLflowにモデルを登録し、そのモデルを使って予測を行う
+# MAGIC %md ### MLflowのモデルトラッキングで実験結果を比較する
+
+# COMMAND ----------
+
+# MAGIC %md ## Part 5. MLflowにモデルを登録
+# MAGIC 
+# MAGIC 上記で作成できた最適なモデルをMLflowのモデルレジストリに登録し、version管理をしていきましょう。
+# MAGIC 
+# MAGIC <div><img src="https://files.training.databricks.com/images/eLearning/ML-Part-4/model-registry.png" style="height: 400px; margin: 20px"/></div>
+# MAGIC 
+# MAGIC  See <a href="https://mlflow.org/docs/latest/registry.html" target="_blank">the MLflow docs</a> for more details on the model registry.
 # MAGIC 
 # MAGIC モデルレジストリの詳細については、([AWS](https://docs.databricks.com/applications/mlflow/model-registry.html)|[Azure](https://docs.microsoft.com/azure/databricks/applications/mlflow/model-registry))をご覧ください。
 
 # COMMAND ----------
 
-import time
+# DBTITLE 1,モデルレジストリへの登録はコードからもでも可能
+# import time
 
-model_name = "cal_housing_keras"
-model_uri = kerasURI+"/model"
-new_model_version = mlflow.register_model(model_uri, model_name)
+# model_name = "cal_housing_keras"
+# model_uri = kerasURI+"/model"
+# new_model_version = mlflow.register_model(model_uri, model_name)
 
-# Registering the model takes a few seconds, so add a delay before continuing with the next cell
-time.sleep(5)
-
-# COMMAND ----------
-
-# MAGIC %md ### 推論のためにモデルを読み込み、予測を行う
+# # Registering the model takes a few seconds, so add a delay before continuing with the next cell
+# time.sleep(5)
 
 # COMMAND ----------
 
-# MLflowレジストリからモデルを読み込む(pull)
-# (モデル名とversionを指定でロード可能)
-keras_model = mlflow.keras.load_model(f"models:/{model_name}/{new_model_version.version}")
+# MAGIC %md ## Part6. デプロイの推論(MLflowからモデルをロードする)
+# MAGIC 
+# MAGIC Databricks上でのモデルのデプロイは以下の3通りに分けられます。
+# MAGIC 
+# MAGIC 1. バッチ処理: Databricks上のnotebookでDataframeを入力し、スコアリングするコードを定期実行する
+# MAGIC 1. ストリーミング処理: Databricks上のnotebookでストリーミングDataframeを入力し、スコアリングを逐次実行する
+# MAGIC 1. REST Serving: REST Server上にモデルをデプロイし、HTTPリクエストでスコアリングデータを読み込み、レスポンスで推定結果を返す
+# MAGIC 
+# MAGIC Databricks上ではバッチ処理、ストリーミング処理がDataframe的に同等に扱えるため、上記のバッチ処理、ストリーミング処理はほぼ同じデプロイ方法になります。
+# MAGIC Rest Servingについては、MLflowのレジストリUIからデプロイ可能です。
+# MAGIC 
+# MAGIC ここでは、バッチ処理、ストリーミング処理でデプロイする方法を見ていきます。
 
-keras_pred = keras_model.predict(X_test)
-keras_pred
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC MLflowからモデルをロードする場合、以下の2通りがあります。
+# MAGIC 
+# MAGIC 1. **Run(学習の結果)**のIDを指定してロードする
+# MAGIC 1. モデルレジストリから、**モデル名、version(もしくは、staging, production)**を指定してロードする
+# MAGIC 
+# MAGIC さらに、ロードしたモデルは、以下の2通りの種類でロードできます。
+# MAGIC 
+# MAGIC 1. **Spark**のDataframeを入力できるPythonの関数としてロード (**Spark分散処理、かつ、ストリーミングにも対応**)
+# MAGIC 1. **Pandas**のDataframeを入力できるPythonの関数としてロード (**シングルコンピュート**)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### A. Run IDからSpark Dataframeのpython関数としてデプロイする
+
+# COMMAND ----------
+
+import mlflow
+
+# 実際のRun IDで置き換えてください!
+logged_model = 'runs:/1237b25ceb9d4cbaa7c475923672d804/model'
+
+# モデルをロードする
+loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model)
+loaded_model
+
+# COMMAND ----------
+
+# 推定を実施する(スコアリングを実施する)対象のデータを読み込む
+
+df = spark.createDataFrame( pd.DataFrame(X_train, columns=cal_housing.feature_names) )
+display(df)
+
+# COMMAND ----------
+
+# モデルを適用して推定する(スコアリング)
+pred_df = df.withColumn('pred', loaded_model(*df.columns))
+display(pred_df)
+
+# COMMAND ----------
+
+# MAGIC %md ### B. Run IDからPandas Dataframeのpython関数としてデプロイする
+
+# COMMAND ----------
+
+import mlflow
+
+# 実際のRun IDで置き換えてください!
+logged_model = 'runs:/1237b25ceb9d4cbaa7c475923672d804/model'
+
+pd_model = mlflow.pyfunc.load_model(logged_model)
+pd_model
+
+# COMMAND ----------
+
+# 推定を実施する(スコアリングを実施する)対象のデータを読み込む
+# (先ほど読み込んだSpark DataframeをPandas Dataframeに変換する)
+
+pd_df = pd.DataFrame(X_train, columns=cal_housing.feature_names)
+pd_df
+
+# COMMAND ----------
+
+# モデルを適用して推定する(スコアリング)
+import pandas as pd
+pred_array = pd_model.predict(pd_df)
+
+# 結果をDataframeにまとめて、表示
+pd_df['pred'] = pred_array
+pd_df
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### C. モデルレジストリから、モデル名、version(もしくは、staging, production)を指定してロードする
+
+# COMMAND ----------
+
+import mlflow.pyfunc
+
+model_name = "レジストリ上のモデルの名前"
+model_version = 1
+# model_version = 'production' ## <= このようにproduction/stagingも指定可能
+
+model = mlflow.pyfunc.load_model(
+    model_uri=f"models:/{model_name}/{model_version}"
+)
 
 # COMMAND ----------
 
