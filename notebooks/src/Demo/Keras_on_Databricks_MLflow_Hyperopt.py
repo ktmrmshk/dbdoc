@@ -13,7 +13,8 @@
 # MAGIC - Part 2. MLflowの基礎 - Kerasの実験結果をトラックする --- (シングルコンピュート)
 # MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 --- (Spark分散処理)
 # MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する --- (シングルコンピュート)
-# MAGIC - Part 5. MLflowにモデルを登録し、そのモデルを使って予測を行う --- (Spark分散処理 or シングルコンピュート)
+# MAGIC - Part 5. MLflowにモデルを登録し、Version管理を実施
+# MAGIC - Part6. デプロイの推論(MLflowからモデルをロードする) --- (Spark分散処理 or シングルコンピュート)
 # MAGIC 
 # MAGIC ### セットアップ
 # MAGIC - Databricks Runtime ML 7.0以上を使用しています。このノートブックでは、ニューラルネットワークの学習結果の表示にTensorBoardを使用しています。使用しているDatabricks Runtimeのバージョンによって、TensorBoardを起動する方法が異なります。
@@ -573,6 +574,27 @@ print(f'cmd => {cmd}')
 # MAGIC 
 # MAGIC モデルサービング機能を使用するとクラスタが起動し続けます。
 # MAGIC 使用後は、必ずモデルサービングのUIからサービングをSTOPしてください。
+
+# COMMAND ----------
+
+# MAGIC %md ## (参考) デプロイの推論(dockerイメージでデプロイする)
+# MAGIC 
+# MAGIC MLflowではモデルトラッキング結果(run)、もしくは、レジストリからdocker形式でモデルをDatabricks外部にデプロイすることができます。
+# MAGIC 
+# MAGIC 先ほど見てきたモデルデプロイと同様に、RUN IDもしくはモデル名/version指定でユーザー環境上でdockerイメージを構築することができます。
+# MAGIC 
+# MAGIC ```bash
+# MAGIC ### ユーザー環境(dockerが使える環境)
+# MAGIC 
+# MAGIC ### docker buildが起動し、dockerイメージが作成される
+# MAGIC $ mlflow models build-docker -m "runs:/xxxxxxxxxxxxxxxxxxxxxxxxx/model" -n "keras_demo_123"
+# MAGIC 
+# MAGIC 
+# MAGIC ```
+# MAGIC 
+# MAGIC 詳細は以下のドキュメントを参照ください。
+# MAGIC 
+# MAGIC [MLflow Docker Build](https://www.mlflow.org/docs/latest/cli.html#mlflow-models-build-docker)
 
 # COMMAND ----------
 
