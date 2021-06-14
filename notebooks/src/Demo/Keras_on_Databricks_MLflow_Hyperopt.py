@@ -590,12 +590,17 @@ print(f'cmd => {cmd}')
 # MAGIC 先ほど見てきたモデルデプロイと同様に、RUN IDもしくはモデル名/version指定でユーザー環境上でdockerイメージを構築することができます。
 # MAGIC 
 # MAGIC ```bash
-# MAGIC ### ユーザー環境(dockerが使える環境)
+# MAGIC ### ユーザー環境(dockerが使える環境)のターミナル
+# MAGIC ## MLflowのインストール
+# MAGIC $ pip install mlflow
+# MAGIC 
+# MAGIC ## MLflowの環境変数設定
+# MAGIC $ export MLFLOW_TRACKING_URI='databricks'
+# MAGIC $ export DATABRICKS_HOST='https://xxxxxxxx.cloud.databricks.com/'   <== workspaceのURL
+# MAGIC $ export DATABRICKS_TOKEN='dapixxxxxxxxxxxxxxxxxxxxxxxxxdc559'  <== User Access Token
 # MAGIC 
 # MAGIC ### docker buildが起動し、dockerイメージが作成される
 # MAGIC $ mlflow models build-docker -m "runs:/xxxxxxxxxxxxxxxxxxxxxxxxx/model" -n "keras_demo_123"
-# MAGIC 
-# MAGIC 
 # MAGIC ```
 # MAGIC 
 # MAGIC 詳細は以下のドキュメントを参照ください。
