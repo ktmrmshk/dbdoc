@@ -8,13 +8,13 @@
 # MAGIC このチュートリアルでは、小さなデータセットを使って、TensorFlow Keras、Hyperopt、MLflowを使ってDatabricksで深層学習モデルを開発する方法を紹介します。
 # MAGIC 
 # MAGIC 以下のステップで説明していきます:
-# MAGIC - データの読み込み、および、前処理 --- (preprocessing, この例ではシングルコンピュート。ただし、Spakr分散処理も可)
-# MAGIC - Part 1. Kerasの基礎 --- (シングルコンピュート)
-# MAGIC - Part 2. MLflowの基礎 - Kerasの実験結果をトラックする --- (シングルコンピュート)
-# MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 --- (Spark分散処理)
-# MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する --- (シングルコンピュート)
+# MAGIC - Part 0. データの読み込み、および、前処理 --- (preprocessing, この例ではシングルコンピュート。ただし、**Spakr分散処理**も可)
+# MAGIC - Part 1. Kerasの基礎 --- (**シングルコンピュート**)
+# MAGIC - Part 2. MLflowの基礎 - Kerasの実験結果をトラックする --- (**シングルコンピュート**)
+# MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 --- (**Spark分散処理**)
+# MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する --- (**シングルコンピュート**)
 # MAGIC - Part 5. MLflowにモデルを登録し、Version管理を実施
-# MAGIC - Part6. デプロイの推論(MLflowからモデルをロードする) --- (Spark分散処理 or シングルコンピュート)
+# MAGIC - Part6. デプロイの推論(MLflowからモデルをロードする) --- (**Spark分散処理** or シングルコンピュート)
 # MAGIC 
 # MAGIC ### セットアップ
 # MAGIC - Databricks Runtime ML 7.0以上を使用しています。このノートブックでは、ニューラルネットワークの学習結果の表示にTensorBoardを使用しています。使用しているDatabricks Runtimeのバージョンによって、TensorBoardを起動する方法が異なります。
@@ -212,6 +212,8 @@ with mlflow.start_run():
   
   # mlflowのタグをつける
   mlflow.log_param('Model_Type', 'ABC123')
+  mlflow.log_param('Model_Version', 'ABC666')
+  mlflow.log_param('Model_xxxx', 'ABC987')
   
   # mlflowで画像も含め、あらゆるデータを記録しておく
   fig = viewModelLoss(history)
@@ -440,6 +442,10 @@ with mlflow.start_run() as run:
 # MAGIC Databricks上ではバッチ処理、ストリーミング処理がDataframe的に同等に扱えるため、上記のバッチ処理、ストリーミング処理はほぼ同じデプロイ方法になります。
 # MAGIC Rest Servingについては、MLflowのレジストリUIからデプロイ可能です。
 # MAGIC 
+# MAGIC ![ml deployment](https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/20210222_deployment_pattern.png)
+# MAGIC 
+# MAGIC 
+# MAGIC 
 # MAGIC ここでは、バッチ処理、ストリーミング処理でデプロイする方法を見ていきます。
 
 # COMMAND ----------
@@ -466,7 +472,7 @@ with mlflow.start_run() as run:
 import mlflow
 
 # 実際のRun IDで置き換えてください!
-logged_model = 'runs:/1237b25ceb9d4cbaa7c475923672d804/model'
+logged_model = 'runs:/326e6759bf664efda86482130b02280b/model'
 
 # モデルをロードする
 loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model)
@@ -482,7 +488,7 @@ display(df)
 # COMMAND ----------
 
 # モデルを適用して推定する(スコアリング)
-pred_df = df.withColumn('pred', loaded_model(*df.columns))
+pred_df = df.withColumn('pred', loaded_model(*df.columns)   )
 display(pred_df)
 
 # COMMAND ----------
