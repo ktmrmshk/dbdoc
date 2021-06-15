@@ -42,7 +42,7 @@ import mlflow.tensorflow
 
 # COMMAND ----------
 
-# MAGIC %md ## Part0. データの読み込み、および、前処理(preprocessing)
+# MAGIC %md ## Part0. データの読み込み、EDA、前処理(preprocessing)
 # MAGIC この例では`scikit-learn`のCalifornia Housingデータセットを使用していま
 
 # COMMAND ----------
@@ -61,10 +61,21 @@ X_train, X_test, y_train, y_test = train_test_split(cal_housing.data,
 
 # X_train, y_trainデータの確認
 import pandas as pd
-display( 
-  pd.concat(
-    [pd.DataFrame(X_train, columns=cal_housing.feature_names), pd.DataFrame(y_train, columns=["label"])], axis=1)
-)
+p_df =   pd.concat([pd.DataFrame(X_train, columns=cal_housing.feature_names), pd.DataFrame(y_train, columns=["label"])], axis=1)
+
+display( p_df )
+
+# COMMAND ----------
+
+display(p_df)
+
+# COMMAND ----------
+
+display(p_df)
+
+# COMMAND ----------
+
+display(p_df)
 
 # COMMAND ----------
 
