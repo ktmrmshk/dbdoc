@@ -175,6 +175,10 @@ print(checkpoint_dir)
 # MAGIC %md 
 # MAGIC 
 # MAGIC 以下では、先に定義した`train()`関数のシングルノードコードを修正して，分散学習を利用する関数を定義しています。
+# MAGIC 
+# MAGIC **注意**
+# MAGIC 
+# MAGIC ランク、ローカルランク、サイズなどはMPIに起因するパラメータになります。詳しくは[こちら](http://mps.q.t.u-tokyo.ac.jp/~arai/mpiclub/mpi_basics.html)を参照ください。
 
 # COMMAND ----------
 
