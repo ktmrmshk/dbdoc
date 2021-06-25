@@ -148,7 +148,7 @@ early_stopping = EarlyStopping(monitor="loss", mode="min", patience=3)
 
 # 学習(fit)の実行
 history = model.fit(
-  X_train, y_train, validation_split=.2, epochs=35,
+  X_train, y_train, validation_split=.2, epochs=15,
   callbacks=[tensorboard_callback, model_checkpoint, early_stopping]
 )
 
