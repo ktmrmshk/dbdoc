@@ -79,6 +79,10 @@ display(p_df)
 
 # COMMAND ----------
 
+p_df.describe()
+
+# COMMAND ----------
+
 # MAGIC %md ### 特徴量のスケーリング
 # MAGIC 
 # MAGIC ニューラルネットワークを扱う際には，特徴量のスケーリングが重要になります．このノートブックでは，`scikit-learn`関数の`StandardScaler`を使用します．
@@ -180,6 +184,9 @@ model.evaluate(X_test, y_test)
 # MAGIC ## Part2: MLFlowを用いて、学習をトラックする
 # MAGIC 
 # MAGIC 上記で実施したモデル学習をMLflowトラックするためのコードに書き換える(ほぼ同じコード)
+# MAGIC 
+# MAGIC 
+# MAGIC <div><img src="https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/mlflow002_tracking.png" style="height: 400px; margin: 20px"/></div>
 
 # COMMAND ----------
 
@@ -215,7 +222,7 @@ with mlflow.start_run():
               metrics=["mse"]) # <= メトリックとしてMSEを用いる
   
   # 学習を実施(fit)
-  history = model.fit(X_train, y_train, validation_split=.2, epochs=35)
+  history = model.fit(X_train, y_train, validation_split=.2, epochs=15)
   
   # 評価
   model.evaluate(X_test, y_test)
@@ -420,9 +427,8 @@ with mlflow.start_run() as run:
 
 # MAGIC %md ## Part 5. MLflowにモデルを登録
 # MAGIC 
-# MAGIC 上記で作成できた最適なモデルをMLflowのモデルレジストリに登録し、version管理をしていきましょう。
-# MAGIC 
-# MAGIC <div><img src="https://files.training.databricks.com/images/eLearning/ML-Part-4/model-registry.png" style="height: 400px; margin: 20px"/></div>
+# MAGIC 上記で作成できた最適なモデルをMLflowのモデルレジストリに登録し、version管理をしていきましょう。<br>
+# MAGIC <div><img src="https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/mlflow003_registry.png" style="height: 400px; margin: 20px"/></div>
 # MAGIC 
 # MAGIC  See <a href="https://mlflow.org/docs/latest/registry.html" target="_blank">the MLflow docs</a> for more details on the model registry.
 # MAGIC 
@@ -443,6 +449,13 @@ with mlflow.start_run() as run:
 # COMMAND ----------
 
 # MAGIC %md ## Part6. デプロイの推論(MLflowからモデルをロードする)
+# MAGIC 
+# MAGIC MLflowで管理された学習モデルはシンプルかつ柔軟にデプロイが可能になります。
+# MAGIC 
+# MAGIC <div><img src="https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/mlflow004_deployment.png" style="height: 400px; margin: 20px"/></div>
+# MAGIC 
+# MAGIC 
+# MAGIC 
 # MAGIC 
 # MAGIC Databricks上でのモデルのデプロイは以下の3通りに分けられます。
 # MAGIC 
