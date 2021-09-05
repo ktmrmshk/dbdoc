@@ -95,6 +95,22 @@ display(data)
 
 # COMMAND ----------
 
+df.write.format('orc').mode('overwrite').save('/home/masahiko.kitamura@databricks.com/lending_club/src_orc/')
+
+# COMMAND ----------
+
+# MAGIC %fs rm -r /home/masahiko.kitamura@databricks.com/lending_club/orc/
+
+# COMMAND ----------
+
+# MAGIC %fs ls dbfs:/databricks-datasets/samples/lending_club/parquet/
+
+# COMMAND ----------
+
+# MAGIC %fs ls s3a://shard-demo-dbfs-root/shard-demo/0/
+
+# COMMAND ----------
+
 # DBTITLE 1,データの準備/Deltaで保存
 # 簡単な処理を行い、結果をParquetとして保存
 from pyspark.sql.functions import col, expr
@@ -145,8 +161,6 @@ sql(f'CREATE TABLE LBS USING delta LOCATION "{delta_path}"')
 # MAGIC From LBS  
 # MAGIC Group by state, loan_status
 # MAGIC Order by counts desc
-# MAGIC 
-# MAGIC -- コメント
 
 # COMMAND ----------
 
@@ -349,7 +363,7 @@ new_df.write.format('delta').option('mergeSchema','true').mode('append').save(de
 # MAGIC %sql
 # MAGIC -- バージョンを指定してスナップショットを取得
 # MAGIC Select * 
-# MAGIC From LBS Version AS OF 3
+# MAGIC From LBS Version AS OF 2
 
 # COMMAND ----------
 

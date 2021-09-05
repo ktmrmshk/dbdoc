@@ -14,7 +14,7 @@
 # MAGIC - Part 3. HyperoptおよびMLflowを用いたハイパーパラメータチューニングの自動化 --- (**Spark分散処理**)
 # MAGIC - Part 4. 最適なハイパーパラメータのセットを使用して、最終的なモデルを構築する --- (**シングルコンピュート**)
 # MAGIC - Part 5. MLflowにモデルを登録し、Version管理を実施
-# MAGIC - Part6. デプロイの推論(MLflowからモデルをロードする) --- (**Spark分散処理** or シングルコンピュート)
+# MAGIC - Part 6. デプロイの推論(MLflowからモデルをロードする) --- (**Spark分散処理** or シングルコンピュート)
 # MAGIC 
 # MAGIC ### セットアップ
 # MAGIC - Databricks Runtime ML 7.0以上を使用しています。このノートブックでは、ニューラルネットワークの学習結果の表示にTensorBoardを使用しています。使用しているDatabricks Runtimeのバージョンによって、TensorBoardを起動する方法が異なります。
@@ -68,6 +68,12 @@ display( p_df )
 # COMMAND ----------
 
 display(p_df)
+
+# COMMAND ----------
+
+display(p_df)
+
+### コメントです！
 
 # COMMAND ----------
 
@@ -152,7 +158,7 @@ early_stopping = EarlyStopping(monitor="loss", mode="min", patience=3)
 
 # 学習(fit)の実行
 history = model.fit(
-  X_train, y_train, validation_split=.2, epochs=15,
+  X_train, y_train, validation_split=.2, epochs=5,
   callbacks=[tensorboard_callback, model_checkpoint, early_stopping]
 )
 
@@ -222,7 +228,7 @@ with mlflow.start_run():
               metrics=["mse"]) # <= メトリックとしてMSEを用いる
   
   # 学習を実施(fit)
-  history = model.fit(X_train, y_train, validation_split=.2, epochs=15)
+  history = model.fit(X_train, y_train, validation_split=.2, epochs=5)
   
   # 評価
   model.evaluate(X_test, y_test)
@@ -289,7 +295,7 @@ def runNN(n):
                 optimizer=optimizer,
                 metrics=["mse"])
 
-  history = model.fit(X_train, y_train, validation_split=.2, epochs=10, verbose=2)
+  history = model.fit(X_train, y_train, validation_split=.2, epochs=5, verbose=2)
 
   # モデルの評価
   score = model.evaluate(X_test, y_test, verbose=0)
@@ -403,7 +409,7 @@ import matplotlib.pyplot as plt
 
 with mlflow.start_run() as run:
   
-  history = new_model.fit(X_train, y_train, epochs=35, callbacks=[early_stopping])
+  history = new_model.fit(X_train, y_train, epochs=15, callbacks=[early_stopping])
   
   # Save the run information to register the model later
   kerasURI = run.info.artifact_uri
@@ -496,7 +502,7 @@ with mlflow.start_run() as run:
 import mlflow
 
 # 実際のRun IDで置き換えてください!
-logged_model = 'runs:/326e6759bf664efda86482130b02280b/model'
+logged_model = 'runs:/69dd6b12f8a443de9fa67d9becb81eea/model'
 
 # モデルをロードする
 loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model)
@@ -524,7 +530,7 @@ display(pred_df)
 import mlflow
 
 # 実際のRun IDで置き換えてください!
-logged_model = 'runs:/1237b25ceb9d4cbaa7c475923672d804/model'
+logged_model = 'runs:/69dd6b12f8a443de9fa67d9becb81eea/model'
 
 pd_model = mlflow.pyfunc.load_model(logged_model)
 pd_model
@@ -562,7 +568,8 @@ model_version = 1
 # model_version = 'production' ## <= このようにproduction/stagingも指定可能
 
 model = mlflow.pyfunc.load_model(
-    model_uri=f"models:/{model_name}/{model_version}"
+  #ex) model_uri=f"models:/ktmr_keras_demo/6"
+  model_uri=f"models:/{model_name}/{model_version}"
 )
 
 # COMMAND ----------
