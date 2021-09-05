@@ -391,6 +391,135 @@ display(
 
 # COMMAND ----------
 
+# MAGIC %md-sandbox 
+# MAGIC <div style="float:left; padding-right:10px; margin-top:20px;">
+# MAGIC   <img src='https://jixjiadatabricks.blob.core.windows.net/images/data-lake-no-label.png' width='70px'>
+# MAGIC </div>
+# MAGIC <div style="float:left;">
+# MAGIC   <h3>BatchとStreamingの統合</h3>
+# MAGIC   Delta Lake/SparkはStraeming処理をバッチ処理と同等に扱えます。ここでは、WikipediaのIRCチャットの内容を受信しているKafkaサーバからリアルタイムでデータを読み込むサンプルを見ていきましょう。
+# MAGIC   
+# MAGIC   <img src="https://jixjiadatabricks.blob.core.windows.net/images/delta_architecture_demo.gif" width="1200px">
+# MAGIC 
+# MAGIC    <h4>Kafkaサーバー情報</h4>
+# MAGIC   <table>
+# MAGIC     <tr><td>オプション名</td><td>kafka.bootstrap.servers</td></tr>
+# MAGIC     <tr><td>サーバー名</td><td>server2.databricks.training:9092</td></tr>
+# MAGIC     <tr><td>トピック</td><td>en</td></tr>
+# MAGIC   </table>
+# MAGIC   <br>
+# MAGIC   <h4>JSONストリーム</h4>
+# MAGIC   <p>DatabricksではWikipediaの公式IRCチャネルから編集データを受信し、JSONに変換して自社Kafkaサーバーへ送信しています。
+# MAGIC     <br>今回はこのKafkaサーバーに流れ込んだ英語の記事(トピック)にサブスクライブし、リアルタイムで処理していきます。
+
+# COMMAND ----------
+
+from pyspark.sql.types import *
+from pyspark.sql.functions import from_json, col
+import re
+
+# ファイルパスの設定(書き込み先など)
+## Username を取得。
+username_raw = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
+## Username の英数字以外を除去し、全て小文字化。Usernameをファイルパスやデータベース名の一部で使用可能にするため。
+username = re.sub('[^A-Za-z0-9]+', '_', username_raw).lower()
+
+homeDir = f'/home/{username}/streaming/wikipedia/'
+bronzePath = homeDir + "bronze.delta"
+bronzeCkpt = homeDir + "bronze.checkpoint"
+
+
+
+#　JSONデータのスキーマ定義
+schema = StructType([
+  StructField("channel", StringType(), True),
+  StructField("comment", StringType(), True),
+  StructField("delta", IntegerType(), True),
+  StructField("flag", StringType(), True),
+  StructField("geocoding", StructType([
+    StructField("city", StringType(), True),
+    StructField("country", StringType(), True),
+    StructField("countryCode2", StringType(), True),
+    StructField("countryCode3", StringType(), True),
+    StructField("stateProvince", StringType(), True),
+    StructField("latitude", DoubleType(), True),
+    StructField("longitude", DoubleType(), True),
+  ]), True),
+  StructField("isAnonymous", BooleanType(), True),
+  StructField("isNewPage", BooleanType(), True),
+  StructField("isRobot", BooleanType(), True),
+  StructField("isUnpatrolled", BooleanType(), True),
+  StructField("namespace", StringType(), True),         
+  StructField("page", StringType(), True),              
+  StructField("pageURL", StringType(), True),           
+  StructField("timestamp", StringType(), True),        
+  StructField("url", StringType(), True),
+  StructField("user", StringType(), True),              
+  StructField("userURL", StringType(), True),
+  StructField("wikipediaURL", StringType(), True),
+  StructField("wikipedia", StringType(), True),
+])
+
+#　JSONストリームを解析し、Deltaに保存
+input_DF = (
+  spark
+  .readStream
+  .format('kafka')                          # Kafkaをソースと指定
+  .option('kafka.bootstrap.servers', 
+          'server2.databricks.training:9092')
+  .option('subscribe', 'en')
+  .load()
+)
+
+# ELTをして、Deltaに書き込む
+(
+  input_DF
+  .withColumn('json', from_json(col('value').cast('string'), schema))   # Kafkaのバイナリデータを文字列に変換し、from_json()でJSONをパース
+  .select(col("json.*"))                    # JSONの子要素だけを取り出す
+  .writeStream                              # writeStream()でストリームを書き出す
+  .format('delta')                          # Deltaとして保存
+  .option('checkpointLocation', bronzeCkpt) # チェックポイント保存先を指定
+  .outputMode('append')                     # マイクロバッチの結果をAppendで追加
+  .queryName('Bronze Stream')               # ストリームに名前を付ける（推奨）
+  .start(bronzePath)                        # start()でストリーム処理を開始 (アクション)
+)
+
+# COMMAND ----------
+
+# データフレームの確認
+display(
+  # バッチ型DataFrameとして、表示
+  spark.read.format('delta').load(bronzePath)
+  
+  # Stream型DataFrameとして、表示
+  #spark.readStream.format('delta').load(bronzePath)
+)
+
+# COMMAND ----------
+
+# データフレームの確認2
+display(
+  # バッチ型DataFrameとして、表示
+  #spark.read.format('delta').load(bronzePath)
+  
+  # Stream型DataFrameとして、表示
+  spark.readStream.format('delta').load(bronzePath)
+)
+
+# COMMAND ----------
+
+spark.readStream.format('delta').load(bronzePath).createOrReplaceTempView('tmp_wikipedia_msg')
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT geocoding.countryCode3, count(*) FROM tmp_wikipedia_msg
+# MAGIC WHERE geocoding.countryCode3 is not null
+# MAGIC GROUP BY geocoding.countryCode3
+# MAGIC ORDER BY geocoding.countryCode3
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## END
 # MAGIC &copy; 2020 Copyright by Jixin Jia (Gin)
@@ -401,6 +530,8 @@ display(
 # DBTITLE 1,Clean-up(このデモで作成したデータなどを削除する場合は以下を実行してください)
 sql(f'DROP DATABASE {dbname} CASCADE')
 dbutils.fs.rm(delta_path, True)
+dbutils.fs.rm(homeDir, True)
+
 
 # COMMAND ----------
 
