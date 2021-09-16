@@ -48,6 +48,7 @@ dbutils.widgets.removeAll()
 # MAGIC * `notebooks/`
 # MAGIC   - `task001` <= 実際の処理コードが書かれているnotebook
 # MAGIC   - `task002` <= 実際の処理コードが書かれているnotebook
+# MAGIC   - `task003_unittest_example` <= 実際の処理コードが書かれているnotebook(unittestコードを含む)
 
 # COMMAND ----------
 
@@ -68,6 +69,13 @@ print(ret)
 ret = dbutils.notebook.run("./notebooks/task002", 60, {"name": "abc123", "age": "23"})
 print(ret)
 
+
+# COMMAND ----------
+
+# notebook "task003_unittest_example"を実行する
+
+test_results = dbutils.notebook.run("./notebooks/task003_unittest_example", 60)
+print(test_results)
 
 # COMMAND ----------
 
