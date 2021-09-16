@@ -508,6 +508,10 @@ display(
 
 # COMMAND ----------
 
+# MAGIC %md ### StreamingはSQLからも参照可能です
+
+# COMMAND ----------
+
 spark.readStream.format('delta').load(bronzePath).createOrReplaceTempView('tmp_wikipedia_msg')
 
 # COMMAND ----------
