@@ -96,7 +96,3 @@ get_and_upload_csv_to_s3(
 )
 
 
-
-# COMMAND ----------
-
-|
