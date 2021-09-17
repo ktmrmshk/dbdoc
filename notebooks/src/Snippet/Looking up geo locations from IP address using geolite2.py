@@ -2,7 +2,7 @@
 # MAGIC %md # IPアドレスから地理情報を調べる(GeoLite2)
 # MAGIC 
 # MAGIC 
-# MAGIC [MaxMind社](https://www.maxmind.com/en/home)がGeoLocationのデータベースGeoLite2を公開しています。CSVファイルでも公開されているので、これをDeltaテーブル化し、IP Addressから地理情報を取得する方法についてまとめてあります。
+# MAGIC [MaxMind社](https://www.maxmind.com/en/home)がGeoLocationのデータベースGeoLite2を公開しています。CSVファイルでも公開されているので、これをDeltaテーブル化し、IP Addressから地理情報を取得する方法についてまとめます。
 # MAGIC 
 # MAGIC ユーザー登録すると、ダウンロードページからCSVファイルを取得できます。
 # MAGIC ここでは、ダウンロードしたファイルを以下のS3上パスに配置した前提のコードになっています。
