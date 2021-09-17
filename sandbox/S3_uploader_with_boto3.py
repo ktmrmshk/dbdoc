@@ -1,12 +1,16 @@
 # Databricks notebook source
 #params
 params={}
-params['geolite2']={ 'license_key' : '',
-       'asn_csv_url':      'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key=YOUR_LICENSE_KEY&suffix=zip',
-       'country_csv_url' : 'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City-CSV&license_key=YOUR_LICENSE_KEY&suffix=zip',
-       'city_csv_url'    : 'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country-CSV&license_key=YOUR_LICENSE_KEY&suffix=zip'}
-
-params['']
+params['geolite2']={}
+params['geolite2']['license_key'] = dbutils.secrets.get(scope='poc', key='geolite_license_key')
+params['geolite2']['asn_csv_url'] = f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key={params['geolite2']['license_key']}&suffix=zip"
+params['geolite2']['country_csv_url'] =f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City-CSV&license_key={params['geolite2']['license_key']}&suffix=zip"
+params['geolite2']['city_csv_url'] = f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country-CSV&license_key={params['geolite2']['license_key']}&suffix=zip"
+params['geolite2']['s3_base_dir'] = 'geolite2'
+params['geolite2']['asn_dirname']='ASN'
+params['geolite2']['country_dirname']='Country'
+params['geolite2']['city_dirname']='City'
+params['geolite2']['s3_bucket'] = 'databricks-ktmr-s3'
 
 # COMMAND ----------
 
@@ -33,7 +37,7 @@ def downlaod_file(url, local_filepath):
     print(f'error=>{e}')
     
 
-def update_geolite2_files(url, tagname, s3_bucket, upload_dir, tmpdir='/tmp'):
+def get_and_upload_csv_to_s3(url, tagname, s3_bucket, upload_dir, tmpdir='/tmp'):
   '''
   url: geolite2 permalink
   tagname: fike name for temp use
@@ -66,4 +70,33 @@ def update_geolite2_files(url, tagname, s3_bucket, upload_dir, tmpdir='/tmp'):
 
 # COMMAND ----------
 
-update_geolite2_files('https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key=xxxxxxxxxxxxxx&suffix=zip', 'GeoLite2-ASN-CSV', 'databricks-ktmr-s3', 'tmptmp_geolite2')https://demo.cloud.databricks.com/#
+# ASN
+get_and_upload_csv_to_s3(
+  params['geolite2']['asn_csv_url'],
+  params['geolite2']['asn_dirname'],
+  params['geolite2']['s3_bucket'],
+  params['geolite2']['s3_base_dir']
+)
+
+# Country
+get_and_upload_csv_to_s3(
+  params['geolite2']['country_csv_url'],
+  params['geolite2']['country_dirname'],
+  params['geolite2']['s3_bucket'],
+  params['geolite2']['s3_base_dir']
+)
+
+
+# City
+get_and_upload_csv_to_s3(
+  params['geolite2']['city_csv_url'],
+  params['geolite2']['city_dirname'],
+  params['geolite2']['s3_bucket'],
+  params['geolite2']['s3_base_dir']
+)
+
+
+
+# COMMAND ----------
+
+|
