@@ -29,8 +29,17 @@
 # MAGIC 
 # MAGIC ## 3. Databricks上でのProphetの利用
 # MAGIC 
+# MAGIC Databricks上でProphetを利用するには、クラスタを構成する全てのnode上にインストールする必要があります。
+# MAGIC Databrciksではそのためのマジックコマンド`%pip`が用意されていますので、以下ようにProphetをインストールできます。
 # MAGIC 
-# MAGIC ## 4. ProphetをSpark上でスケールさせる
+# MAGIC ```
+# MAGIC %pip install pystan==2.19.1.1 
+# MAGIC %pip install  prophet
+# MAGIC ```
+# MAGIC 
+# MAGIC * SparkによるProphetの並列分散実行
+# MAGIC * グラフ化EDA
+# MAGIC * MLflowでトラックする
 
 # COMMAND ----------
 
@@ -99,3 +108,86 @@ superbowls = pd.DataFrame({
   'upper_window': 1,
 })
 holidays = pd.concat((playoffs, superbowls))
+
+# COMMAND ----------
+
+holidays
+
+# COMMAND ----------
+
+holidays = pd.DataFrame({
+  'holiday': 'jp_holiday',
+  'ds': pd.to_datetime(['2018-01-01', '2018-01-08', '2018-02-11',
+                        '2018-02-12', '2018-03-21', '2018-04-29',
+                        '2018-05-03', '2018-05-04', '2018-05-05',
+                        '2018-07-16', '2018-08-11', '2018-09-17',
+                        '2018-09-23', '2018-09-24', '2018-10-08',
+                        '2018-11-03', '2018-11-23', '2018-12-23',
+                        '2018-12-24']),
+})
+
+# COMMAND ----------
+
+holidays
+
+# COMMAND ----------
+
+m = Prophet(holidays=holidays)
+m.fit(df)
+future = m.make_future_dataframe(periods=365)
+forecast = m.predict(future)
+
+# COMMAND ----------
+
+# 14日周期の現象をモデル化する
+m = Prophet(weekly_seasonality=False)
+m.add_seasonality(name='biweekly', period=14, fourier_order=5)
+forecast = m.fit(df).predict(future)
+
+# COMMAND ----------
+
+# 信頼区間(uncertainty intervals)の変更
+# デフォルトでは80%に設定されている
+
+m = Prophet()
+m.fit(df)
+future = m.make_future_dataframe(periods=365) 
+forecast = m.predict(future)
+
+fig1 = m.plot(forecast, figsize=(20, 12)) # 結果のプロット#1
+#fig2 = m.plot_components(forecast) # 結果のプロット#2
+
+# COMMAND ----------
+
+m = Prophet(interval_width=0.95)
+m.fit(df)
+future = m.make_future_dataframe(periods=365) 
+forecast = m.predict(future)
+
+fig1 = m.plot(forecast, figsize=(20, 12)) # 結果のプロット#1
+#fig2 = m.plot_components(forecast) # 結果のプロット#2
+
+# COMMAND ----------
+
+その他、
+
+* 収束上限値が分かっている場合のモデル
+* トレンドの変化点への追随
+* 信頼性区間のSampling方法
+* 他の要素に依存する季節性の対応
+* 異常値の対応
+* 1日以上の
+
+などの機能があります。
+
+# COMMAND ----------
+
+# MAGIC %pip install pystan==2.19.1.1 
+
+# COMMAND ----------
+
+# MAGIC %pip install  prophet
+
+# COMMAND ----------
+
+
