@@ -1,7 +1,8 @@
 # Databricks notebook source
 # MAGIC %md 
 # MAGIC # Spark環境を用いたPytorchの推定の分散並列化
-# MAGIC (Distributed model inference using PyTorch)
+# MAGIC (Original Notebook: [Distributed model inference using PyTorch](https://docs.databricks.com/_static/notebooks/deep-learning/pytorch-images.html))
+# MAGIC 
 # MAGIC 
 # MAGIC このノートブックでは、[torchvision.models](https://pytorch.org/docs/stable/torchvision/models.html#torchvision.models.resnet50)のResNet-50モデルと画像ファイルを入力データとして、PyTorchを使って分散モデル推論を行う方法を紹介しています。
 # MAGIC 
