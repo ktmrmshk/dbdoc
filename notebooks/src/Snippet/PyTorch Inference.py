@@ -37,7 +37,7 @@
 # ストレージアカウント、コンテナ、アクセスキーの設定
 storage_account = 'test_storage_account123'
 storage_container = 'image-container'
-access_key = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=='
+access_key = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==' # 本番環境ではsecrets機能を用いて、平文では扱わないようにする
 
 
 # dbfs上の`/mnt/images`に上記のstorage containerをマウントする
