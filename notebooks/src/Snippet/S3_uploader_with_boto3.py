@@ -64,7 +64,7 @@ def get_and_upload_csv_to_s3(url, tagname, s3_bucket, upload_dir, tmpdir='/tmp')
       local=os.path.join(tmpdir, n)
       base=os.path.basename(n)
       s3_path=os.path.join(upload_dir, tagname, base)
-      print(f'uploading files to s3: {local} => {s3_path}')
+      print(f'''uploading files to s3: {local} => s3://{params['geolite2']['s3_bucket']}{s3_path}''')
       upload_to_s3(local, s3_bucket, s3_path)
 
 
