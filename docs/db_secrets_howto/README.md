@@ -1,12 +1,15 @@
-# Databricks Secretsの使い方
+# Databricks CLIおよびSecretsの使い方
 
 Databricksのnotebook上でパスワードやシークレットキーなどを使用したい場合があります。
 例えば、Databricks(クラスタ)からAWSアクセスキー/シークレットキーを使ってAWS S3へアクセスする場合、
 notebook上で`s3://{access_key}:{secret_key}@{s3_bucket}`のようなパスで参照できます。しかし、
-そのままコード上で実行するとシークレットキーなどが平文で表示されてしまうため安全ではありません。
+そのままコードに書いて実行するとシークレットキーなどが平文で表示されてしまうため安全ではありません。
 
-このような状況で、コード上では内容を隠蔽した状態で変数に値を提供する機能がSecretsです。
+このような状況で、コード上では内容を隠蔽しつつ変数に値を提供する機能がSecretsです。
+具体的には、Secretsは秘匿文字列のためのkey-valueストアです。
 この記事では、DatabricksのSecretsの使用方法、アクセス制御について説明します。
+
+また、Secretsの管理にはDatabricks CLIが必要になります。そのため、CLIのセットアップの方法も説明します。
 
 ## Secrets機能の種類
 
@@ -14,8 +17,8 @@ Secretsには以下の2つのバックエンドモードがあります。
 
 |# | Backend Type   | 特徴  | 利用可能クラウド |
 |--|----------------|-------|-----------------------|
-|1.| Databricks     | シークレットのkey/valueはDatabricks上で管理される。ユーザーはDatabricks CLI/APIを使用してシークレットのKey/Valueを登録する。(デフォルト)      | AWS, Azure, GCP      |
-|2.| Azure Key Vallt| シークレットのKey/ValueはAzure Key Vaultで管理される。DatabricksがAzure Key Valとの関連付けさせて値を参照する。ユーザーはAzure Key VaultのUI上でシークレットを登録する。   | Azure
+|1.| Databricks     | シークレットのkey-valueはDatabricks上で管理される。ユーザーはDatabricks CLI/APIを使用してシークレットのkey-valueを登録する。(デフォルト)      | AWS, Azure, GCP      |
+|2.| Azure Key Vault| シークレットのkey-valueはAzure Key Vaultで管理される。DatabricksがAzure Key Vaultとの関連付けさせて値を参照する。ユーザーはAzure Key VaultのUI上でシークレットを登録する。   | Azure
 
 ここでは、DatabricksバックエンドのSecretsの使用・管理方法について説明します。
 Azure Key VaultバックエンドのSecretsに関しては[こちら](https://docs.microsoft.com/ja-jp/azure/databricks/scenarios/store-secrets-azure-key-vault)を参照ください。
@@ -34,17 +37,47 @@ CLIはPyPIパッケージで公開されていますので、Pythonの`pip`コ�
 ```bash
 $ pip install databricks-cli
 
-# 確認
+### 確認
 $ databricks --version
 Version 0.14.3
+
+### Helpの表示
+$ databricks -h
+
+Usage: databricks [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -v, --version   0.14.3
+  --debug         Debug Mode. Shows full stack trace on error.
+  --profile TEXT  CLI connection profile to use. The default profile is
+                  "DEFAULT".
+  -h, --help      Show this message and exit.
+
+Commands:
+  cluster-policies  Utility to interact with Databricks cluster policies.
+  clusters          Utility to interact with Databricks clusters.
+  configure         Configures host and authentication info for the CLI.
+  fs                Utility to interact with DBFS.
+  groups            Utility to interact with Databricks groups.
+  instance-pools    Utility to interact with Databricks instance pools.
+  jobs              Utility to interact with jobs.
+  libraries         Utility to interact with libraries.
+  pipelines         Utility to interact with the Databricks Delta Pipelines.
+  runs              Utility to interact with the jobs runs.
+  secrets           Utility to interact with Databricks secret API.
+  stack             [Beta] Utility to deploy and download Databricks resource
+                    stacks.
+  tokens            Utility to interact with Databricks tokens.
+  workspace         Utility to interact with the Databricks workspace.
+
 ```
 
 システム要件についての詳細は[こちら](https://docs.databricks.com/dev-tools/cli/index.html)を参照ください。
 
 
-### アクセストークンの準備
+### Tokenの準備
 
-CLIの認証にはPersonal Access Token(PAT,　以下Token)を使用します(Databricksワークスペースのログインユーザー名、パスワードでの認証も可能ですが、パスワードが平文で設定ファイル内に記載されるため安全ではなく非推奨です)。CLIコマンドは、このtokenに紐づくユーザーの権限に基づいて実行されます。
+CLIの認証にはPersonal Access Token(PAT,　以下Token)を使用します(Databricksワークスペースのログインユーザー名、パスワードでの認証も可能ですが、パスワードが平文で設定ファイル内に記載されるため安全ではなく非推奨です)。CLIコマンドは、このTokenに紐づくユーザーの権限に基づいて実行されます。
 
 Tokenは各ユーザーがDatabricksのワークスペース上から発行可能です。
 
@@ -80,7 +113,7 @@ Tokenは各ユーザーがDatabricksのワークスペース上から発行可�
 最後に、上記で発行したTokenとWorkspace URLをCLIに登録します。
 
 ```bash
-$ databricks configure --token
+$ databricks configure --Token
 Databricks Host (should begin with https://):  <=== "Workspace URLを入力。例えば`https://xxxxx.cloud.databricks.com`など"
 Token:   <=== 上記のToken文字列を入力
 ```
@@ -92,12 +125,12 @@ $ less ~/.databrickscfg
 
 [DEFAULT]
 host = https://xxxxx.cloud.databricks.com
-token = xxxxxxxxxxxxxxxxxxx
+Token = xxxxxxxxxxxxxxxxxxx
 ```
 上記の`[DEFAULT]`部分はProfile名になります。
 一般的なクレデンシャルファイルと同様にProfile名を分けて、複数のWorkspace/Tokenを含めることができます。
 
-上記のクレデンシャルが正しく機能するかテストでCLIコマンドを実行してみます。
+上記のクレデンシャルが正しく機能するか確認するために適当なCLIコマンドを実行してみます。
 ```bash
 $ databricks workspace ls 
 Repos
@@ -111,7 +144,7 @@ Shared
 
 ## Secretsの作成
 
-SecretsはScopeを作成し、そのScope内に複数のシークレットKey/Valueを登録して使用します。
+SecretsはScopeを作成し、そのScope内に複数のシークレットkey-valueを登録して使用します。
 このScopeがアクセス制限の基本単位になっています。
 
 ここで、Databricks(クラスタ)からAWSのS3へのアクセスについて、AWSアクセスキー/シークレットキーを用いて実施するケースを例にとり、これらのキー情報をSecretsを使って管理、使用する方法を見ていきます。
@@ -142,7 +175,7 @@ Scope作成していきます。
 $ databricks secrets create-scope --scope "my_aws_secrets"
 ```
 
-続いて、Key/Valueを登録します。
+続いて、key-valueを登録します。
 
 ```bash
 $ databricks secrets put --scope "my_aws_secrets" --key "my_aws_access_key" --string-value "ACCESSKEY123ABCDEFG"
@@ -167,7 +200,7 @@ my_aws_access_key   1632832509775
 my_aws_secret_key   1632832586314
 ```
 
-2つのkey/valueが登録されていることがわかります。
+2つのkey-valueが登録されていることがわかります。
 以上で、Secretsの登録が完了しました。
 
 
@@ -208,7 +241,7 @@ print(access_key)
 Secretsの削除もCLIから実施します。
 
 ```bash
-### Scope内の特定のKey/Valueの削除
+### Scope内の特定のkey-valueの削除
 $ databricks secrets delete  --scope "my_aws_secrets" --key "my_aws_access_key"
 
 ### Scope自体の削除
@@ -253,18 +286,20 @@ Commands:
 
 ## Secretsのアクセス制御
 
+**注意:**　本機能はPremium, Enterpriseプランでのみ利用できます。
+
 Secretsはユーザー間・グループ内で共有可能です。ただしデフォルトでは作成したユーザー、およびAdminユーザーのみが参照できる状態になっています。ここでは、アクセス制御の方法について説明します。
 
 アクセス権限に関しては以下の3種類が定義されています。
 
-|権限| Scope ACL変更 | Scopeの作成・削除 | Scope内のkey/valueの作成・削除| Scope内のkey/valueの参照 |
+|権限| Scope ACL変更 | Scopeの作成・削除 | Scope内のkey-valueの作成・削除| Scope内のkey-valueの参照 |
 |----|:----------:|:-------------:|:-:|:-:|
 | `MANAGE` |    X    |       X           |          X              |               X                      |
 | `WRITE`  |         |                   |          X              |              X                        |
 | `READ`   |         |                   |                         |               X                       |
 
 AdminユーザーはすべてのSecrets Scopeについて`MANAGE`権限が与えられます。
-一般ユーザーに関しては、Scopeを作成したユーザーに`MANAGE`権限が付与され、それ以外の一般ユーザーについてはアクセス権限は付与されません。
+一方、一般ユーザーに関しては、Scopeを作成したユーザーに`MANAGE`権限が付与され、それ以外の一般ユーザーについてはアクセス権限は付与されません。
 つまり、デフォルトでは、一般ユーザーは他のユーザーが作成したScopeには参照できないようになっています。
 
 他のユーザーやグループにSecretsのアクセス許可を与える例を見ていきましょう。
@@ -289,5 +324,15 @@ me@example.com        MANAGE  <== Scope作成ユーザーはデフォルトで`M
 これで、ユーザー`user001@example.com`やグループ`team_abc123`のメンバーユーザーがSecrets `my_aws_secrets`を参照できるようになります。
 また、ユーザー`user001@example.com`はこのSecrets `my_aws_secrets`の作成ユーザーと同等の権限が付与され、Secretsを管理が可能になります。
 
+## 制限
+
+Secretsについて以下の制限があります。
+
+* WorkspaceあたりのScope数の上限: `100`
+* 各Scope内に登録できるSecrets数の上限: `1000`
+* シークレット(value)の最大サイズ: `128 KB`
 
 
+## 参考
+
+* [シークレットの管理](https://docs.microsoft.com/ja-jp/azure/databricks/security/secrets/)
