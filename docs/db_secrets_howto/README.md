@@ -1,8 +1,8 @@
 # Databricks CLIおよびSecretsの使い方
 
-Databricksのnotebook上でパスワードやシークレットキーなどを使用したい場合があります。
+DatabricksのNotebook上でパスワードやシークレットキーなどを使用したい場合があります。
 例えば、Databricks(クラスタ)からAWSアクセスキー/シークレットキーを使ってAWS S3へアクセスする場合、
-notebook上で`s3://{access_key}:{secret_key}@{s3_bucket}`のようなパスで参照できます。しかし、
+Notebook上で`s3://{access_key}:{secret_key}@{s3_bucket}`のようなパスで参照できます。しかし、
 そのままコードに書いて実行するとシークレットキーなどが平文で表示されてしまうため安全ではありません。
 
 このような状況で、コード上では内容を隠蔽しつつ変数に値を提供する機能がSecretsです。
@@ -77,12 +77,12 @@ Commands:
 
 ### Tokenの準備
 
-CLIの認証にはPersonal Access Token(PAT,　以下Token)を使用します(Databricksワークスペースのログインユーザー名、パスワードでの認証も可能ですが、パスワードが平文で設定ファイル内に記載されるため安全ではなく非推奨です)。CLIコマンドは、このTokenに紐づくユーザーの権限に基づいて実行されます。
+CLIの認証にはPersonal Access Token(PAT,　以下Token)を使用します(Databricks Workspaceのログインユーザー名、パスワードでの認証も可能ですが、パスワードが平文で設定ファイル内に記載されるため安全ではなく非推奨です)。CLIコマンドは、このTokenに紐づくユーザーの権限に基づいて実行されます。
 
-Tokenは各ユーザーがDatabricksのワークスペース上から発行可能です。
+Tokenは各ユーザーがDatabricksのWorkspace上から発行可能です。
 
 #### 一般ユーザー向けのToken機能の有効化
-ワークスペースの初期状態ではAdminユーザー以外はTokenの発行が無効(不可能)になっているため、一般ユーザーでTokenを利用するには、以下の通り機能の有効化が必要になります。
+Workspaceの初期状態ではAdminユーザー以外はTokenの発行が無効(不可能)になっているため、一般ユーザーでTokenを利用するには、以下の通り機能の有効化が必要になります。
 
 (AdminユーザーのみのToken発行を許可し、一般ユーザーのToken発行が不要な場合はここで説明している作業は不要です。)
 
