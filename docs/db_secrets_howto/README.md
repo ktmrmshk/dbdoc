@@ -171,7 +171,7 @@ my_aws_secret_key   1632832586314
 以上で、Secretsの登録が完了しました。
 
 
-### Notebook上からのSecrets利用
+## Notebook上からのSecrets利用
 
 
 Notebook上のPythonコードからSecretsの値を参照するには`dbutils.secrets.get()`を使用します。
@@ -203,7 +203,7 @@ print(access_key)
 [REDACTED]
 ```
 
-### Secretsの削除
+## Secretsの削除
 
 Secretsの削除もCLIから実施します。
 
@@ -250,5 +250,44 @@ Commands:
                 "put-acl".
 
 ```
+
+## Secretsのアクセス制御
+
+Secretsはユーザー間・グループ内で共有可能です。ただしデフォルトでは作成したユーザー、およびAdminユーザーのみが参照できる状態になっています。ここでは、アクセス制御の方法について説明します。
+
+アクセス権限に関しては以下の3種類が定義されています。
+
+|権限| Scope ACL変更 | Scopeの作成・削除 | Scope内のkey/valueの作成・削除| Scope内のkey/valueの参照 |
+|----|:----------:|:-------------:|:-:|:-:|
+| `MANAGE` |    X    |       X           |          X              |               X                      |
+| `WRITE`  |         |                   |          X              |              X                        |
+| `READ`   |         |                   |                         |               X                       |
+
+AdminユーザーはすべてのSecrets Scopeについて`MANAGE`権限が与えられます。
+一般ユーザーに関しては、Scopeを作成したユーザーに`MANAGE`権限が付与され、それ以外の一般ユーザーについてはアクセス権限は付与されません。
+つまり、デフォルトでは、一般ユーザーは他のユーザーが作成したScopeには参照できないようになっています。
+
+他のユーザーやグループにSecretsのアクセス許可を与える例を見ていきましょう。
+
+```bash
+### ユーザー"user001@example.com"に`MANAGE`権限を付与する
+$ databricks secrets put-acl --scope "my_aws_secrets" --principal user001@example.com --permission MANAGE
+
+### グループ"team_abc123"に対して`READ`権限を付与する
+$ databricks secrets put-acl --scope "my_aws_secrets" --principal team_abc123 --permission READ
+
+### 現在のアクセス権限を確認する
+$ databricks　secrets list-acls --scope "my_aws_secrets"
+
+Principal             Permission
+--------------------  ------------
+team_abc123           READ
+user001@example.com   MANAGE
+me@example.com        MANAGE  <== Scope作成ユーザーはデフォルトで`MANAGE`が付与
+```
+
+これで、ユーザー`user001@example.com`やグループ`team_abc123`のメンバーユーザーがSecrets `my_aws_secrets`を参照できるようになります。
+また、ユーザー`user001@example.com`はこのSecrets `my_aws_secrets`の作成ユーザーと同等の権限が付与され、Secretsを管理が可能になります。
+
 
 
