@@ -18,7 +18,7 @@ Secretsには以下の2つのバックエンドモードがあります。
 |# | Backend Type   | 特徴  | 利用可能クラウド |
 |--|----------------|-------|-----------------------|
 |1.| Databricks     | シークレットのkey-valueはDatabricks上で管理される。ユーザーはDatabricks CLI/APIを使用してシークレットのkey-valueを登録する。(デフォルト)      | AWS, Azure, GCP      |
-|2.| Azure Key Vault| シークレットのkey-valueはAzure Key Vaultで管理される。DatabricksがAzure Key Vaultとの関連付けさせて値を参照する。ユーザーはAzure Key VaultのUI上でシークレットを登録する。   | Azure
+|2.| Azure Key Vault| シークレットのkey-valueはAzure Key Vaultで管理される。DatabricksがAzure Key Vaultと連携し値を参照する。ユーザーはAzure Key VaultのUI上でシークレットを登録する。   | Azure |
 
 ここでは、DatabricksバックエンドのSecretsの使用・管理方法について説明します。
 Azure Key VaultバックエンドのSecretsに関しては[こちら](https://docs.microsoft.com/ja-jp/azure/databricks/scenarios/store-secrets-azure-key-vault)を参照ください。
@@ -27,12 +27,12 @@ Azure Key VaultバックエンドのSecretsに関しては[こちら](https://do
 
 Secretsの登録、削除などの管理はWeb UIでは提供されておらず、Databricks CLIもしくはAPIを経由での操作が必要になります。
 ここでは、Databricks CLI(以下、CLI)を使用する例を見ていくため、セットアップしていきます。
-既にCLIがセットアップ済であれば読み飛ばしてください。
+既にCLIがセットアップ済みであれば読み飛ばしてください。
 
 
 ### Databricks CLIのインストール
 
-CLIはPyPIパッケージで公開されていますので、Pythonの`pip`コマンドでインストール可能です。
+CLIは[PyPIパッケージ](https://pypi.org/project/databricks-cli/)で公開されていますので、Pythonの`pip`コマンドでインストール可能です。
 
 ```bash
 $ pip install databricks-cli
@@ -82,7 +82,7 @@ CLIの認証にはPersonal Access Token(PAT,　以下Token)を使用します(Da
 Tokenは各ユーザーがDatabricksのWorkspace上から発行可能です。
 
 #### 一般ユーザー向けのToken機能の有効化
-Workspaceの初期状態ではAdminユーザー以外はTokenの発行が無効(不可能)になっているため、一般ユーザーでTokenを利用するには、以下の通り機能の有効化が必要になります。
+Workspaceの初期状態ではAdminユーザー以外はTokenの発行が無効化されているため、一般ユーザーでTokenを利用するには、以下の通り機能の有効化が必要になります。
 
 (AdminユーザーのみのToken発行を許可し、一般ユーザーのToken発行が不要な場合はここで説明している作業は不要です。)
 
@@ -183,8 +183,9 @@ $ databricks secrets put --scope "my_aws_secrets" --key "my_aws_access_key" --st
 $ databricks secrets put --scope "my_aws_secrets" --key "my_aws_secret_key" --string-value "ABCsecretkey/foobar123" 
 ```
 
-ScopeおよびKeyが登録できたか確認します。
+ScopeおよびKeyが登録できているかを確認します。
 ```bash
+### Scopeの確認
 $ databricks secrets list-scopes
 
 Scope           Backend     KeyVault URL
@@ -192,7 +193,7 @@ Scope           Backend     KeyVault URL
 my_aws_secrets  DATABRICKS  N/A
 
 
-
+### Scope内のシークレットkey-valueの確認
 $ databricks secrets list --scope "my_aws_secrets"
 Key name             Last updated
 -----------------  --------------
@@ -288,7 +289,7 @@ Commands:
 
 **注意:**　本機能はPremium, Enterpriseプランでのみ利用できます。
 
-Secretsはユーザー間・グループ内で共有可能です。ただしデフォルトでは作成したユーザー、およびAdminユーザーのみが参照できる状態になっています。ここでは、アクセス制御の方法について説明します。
+Secretsはユーザー間・グループ内で共有可能です。ここでは、アクセス制御の方法について説明します。
 
 アクセス権限に関しては以下の3種類が定義されています。
 
@@ -300,7 +301,7 @@ Secretsはユーザー間・グループ内で共有可能です。ただしデ�
 
 AdminユーザーはすべてのSecrets Scopeについて`MANAGE`権限が与えられます。
 一方、一般ユーザーに関しては、Scopeを作成したユーザーに`MANAGE`権限が付与され、それ以外の一般ユーザーについてはアクセス権限は付与されません。
-つまり、デフォルトでは、一般ユーザーは他のユーザーが作成したScopeには参照できないようになっています。
+つまり、デフォルトでは、一般ユーザーは他のユーザーが作成したScopeを参照できないようになっています。
 
 他のユーザーやグループにSecretsのアクセス許可を与える例を見ていきましょう。
 
@@ -322,7 +323,7 @@ me@example.com        MANAGE  <== Scope作成ユーザーはデフォルトで`M
 ```
 
 これで、ユーザー`user001@example.com`やグループ`team_abc123`のメンバーユーザーがSecrets `my_aws_secrets`を参照できるようになります。
-また、ユーザー`user001@example.com`はこのSecrets `my_aws_secrets`の作成ユーザーと同等の権限が付与され、Secretsを管理が可能になります。
+また、ユーザー`user001@example.com`はこのSecrets `my_aws_secrets`の作成ユーザーと同等の権限が付与され、Secretsの管理が可能になります。
 
 ## 制限
 
