@@ -1,7 +1,8 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC 
-# MAGIC # MLflowを使った場合のデプロイ方法について
+# MAGIC # MLflowによる機械学習のワークフロー管理
+# MAGIC ## (学習からデプロイまで)
 
 # COMMAND ----------
 
@@ -18,9 +19,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import ElasticNet
 from urllib.parse import urlparse
-import mlflow, mlflow.sklearn
 
-mlflow.sklearn.autolog()
 
 def eval_metrics(actual, pred):
     rmse = np.sqrt( mean_squared_error(actual, pred) )
@@ -28,6 +27,12 @@ def eval_metrics(actual, pred):
     r2 = r2_score(actual, pred)
     return rmse, mae, r2
 
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### 学習データの読み込み
 
 # COMMAND ----------
 
@@ -52,9 +57,35 @@ test_x.head()
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### データ可視化・探索 (EDA)
+# MAGIC 
+# MAGIC `display()`を使うと効率よくデータ可視化・探索(EDA)ができます。
+# MAGIC 
+# MAGIC 必要であれば前処理などもそのまま実行できます。
 
-alpha = 0.2
-l1_ratio = 0.5
+# COMMAND ----------
+
+display(data)
+
+# COMMAND ----------
+
+# いろいろプロットを試してみてください
+
+display(data)
+
+# COMMAND ----------
+
+# MAGIC %md 
+# MAGIC ### モデルの構築(トレーニング)
+
+# COMMAND ----------
+
+import mlflow, mlflow.sklearn
+mlflow.sklearn.autolog()
+
+alpha = 0.02
+l1_ratio = 0.01
 
 with mlflow.start_run():
   lr = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42)
@@ -72,7 +103,7 @@ with mlflow.start_run():
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC # 2. MLflowからモデルをロードする
+# MAGIC ## 2. MLflowからモデルをロードする
 # MAGIC 
 # MAGIC Databricks上でのモデルのデプロイは以下の3通りに分けられます。
 # MAGIC 
