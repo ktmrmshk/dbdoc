@@ -1,5 +1,24 @@
 # Databricks notebook source
-
+# MAGIC %md
+# MAGIC # Webアクセスログ解析
+# MAGIC 
+# MAGIC このNotebookではクラウドのオブジェクトストレージ上(AWS S3, Azure Blob Storage, GCSなど)にあるWebアクセスログのデータ分析を実施します。
+# MAGIC データ処理の流れは以下の通りです。
+# MAGIC 
+# MAGIC ---
+# MAGIC 
+# MAGIC 
+# MAGIC 1. オブジェクトストレージ上からログファイルを読み込み、Deltaテーブル化します(生データログ)。
+# MAGIC 1. 上記で取り込んだデータのみを使って、アドホック分析を実施します。
+# MAGIC 1. 続いて、地理的な分析要素と組み合わせるため、GeoLocation(GeoLite2)データをDeltaテーブル化します(生データIP-Geo)。
+# MAGIC 1. これら2つのテーブルから分析・可視化のためにJOINしたVIEWを作成します(アクセスデータ+地理データ)。
+# MAGIC 1. 地理情報を含めた可視化をします。
+# MAGIC 1. 上記で実施したグラフをダッシュボード化します。
+# MAGIC 1. 機械学習へ続きます。
+# MAGIC 
+# MAGIC ---
+# MAGIC 
+# MAGIC <img src="https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/image/webaccess_overview.jpg" width="900">
 
 # COMMAND ----------
 
@@ -61,10 +80,31 @@ split_df.write.format('delta').mode('overwrite').save('s3://databricks-ktmr-s3/v
 
 # COMMAND ----------
 
+# DBTITLE 1,パス別アクセス数(テーブル)
 # MAGIC %sql
-# MAGIC select src_ip, method, count(*) from ktmrdb.access_log
-# MAGIC group by src_ip, method
-# MAGIC order by count(*) desc
+# MAGIC SELECT path, count(1) as cnt FROM ktmrdb.access_log
+# MAGIC WHERE method = 'GET'
+# MAGIC GROUP BY path
+# MAGIC ORDER BY cnt desc
+# MAGIC limit 100
+
+# COMMAND ----------
+
+# DBTITLE 1,パス別アクセス数(グラフ)
+# MAGIC %sql
+# MAGIC SELECT path, count(1) as cnt FROM ktmrdb.access_log
+# MAGIC WHERE method = 'GET'
+# MAGIC GROUP BY path
+# MAGIC ORDER BY cnt desc
+# MAGIC limit 100
+
+# COMMAND ----------
+
+# DBTITLE 1,ステータスコード(分布)
+# MAGIC %sql
+# MAGIC SELECT status_code, count(1) as cnt FROM ktmrdb.access_log
+# MAGIC GROUP BY status_code
+# MAGIC ORDER BY cnt desc
 
 # COMMAND ----------
 
@@ -85,6 +125,7 @@ split_df.write.format('delta').mode('overwrite').save('s3://databricks-ktmr-s3/v
 
 # COMMAND ----------
 
+# DBTITLE 1,日次のアクセス数
 # MAGIC %sql
 # MAGIC 
 # MAGIC WITH access_log_with_ts AS (
@@ -133,16 +174,6 @@ split_df.write.format('delta').mode('overwrite').save('s3://databricks-ktmr-s3/v
 
 # COMMAND ----------
 
-# DBTITLE 1,パス別アクセス数
-# MAGIC %sql
-# MAGIC SELECT path, count(1) as cnt FROM ktmrdb.access_log
-# MAGIC WHERE method = 'GET'
-# MAGIC GROUP BY path
-# MAGIC ORDER BY cnt desc
-# MAGIC limit 100
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ### Pythonでも分析可能です
 
@@ -172,11 +203,13 @@ display(
 
 # MAGIC %md
 # MAGIC ## GeoIPテーブルの作成
+# MAGIC 
+# MAGIC すでに別のNotebookで作成したGeoIPテーブル`db_geolite2.geolite2_city_blocks_ipv4_delta`を使用して、そこからアクセスログに含まれるIPのLocationテーブルを作成します。
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SELECT * FROM db_geolite2.geolite2_city_blocks_ipv4_delta limit 10
+# MAGIC SELECT * FROM db_geolite2.geolite2_city_blocks_ipv4_delta where represented_country_geoname_id is not null limit 10
 
 # COMMAND ----------
 
@@ -209,12 +242,14 @@ spark.udf.register('to_address_int', to_address_int)
 
 # COMMAND ----------
 
+# DBTITLE 1,アクセスログに含まれるIPを抽出
 # MAGIC %sql
 # MAGIC create or replace temp view ipaddr_list
 # MAGIC as select distinct src_ip as ipaddr from ktmrdb.access_log where src_ip != ''
 
 # COMMAND ----------
 
+# DBTITLE 1,アクセスログに含まれるIPのGeoLocationのテーブルを作成
 sql('SET spark.databricks.optimizer.rangeJoin.binSize=65536;')
 sql('USE db_geolite2')
 
@@ -277,6 +312,7 @@ sql("CREATE TABLE IF NOT EXISTS ktmrdb.geoip USING delta LOCATION 's3://databric
 
 # COMMAND ----------
 
+# DBTITLE 1,作成したテーブルの確認
 # MAGIC %sql
 # MAGIC SELECT * FROM ktmrdb.geoip
 
@@ -312,7 +348,10 @@ sql("CREATE TABLE IF NOT EXISTS ktmrdb.geoip USING delta LOCATION 's3://databric
 
 # COMMAND ----------
 
+# DBTITLE 1,地理情報分析・可視化のためのVIEWを作成
 # MAGIC %sql
+# MAGIC CREATE VIEW IF NOT EXISTS ktmrdb.access_location
+# MAGIC AS (
 # MAGIC WITH access_ranking AS (
 # MAGIC   SELECT src_ip, count(1) as cnt
 # MAGIC   FROM ktmrdb.access_log
@@ -324,11 +363,37 @@ sql("CREATE TABLE IF NOT EXISTS ktmrdb.geoip USING delta LOCATION 's3://databric
 # MAGIC JOIN  ktmrdb.country_code c
 # MAGIC ON g.country_iso_code = c.2letter_code
 # MAGIC ORDER BY a.cnt desc
+# MAGIC 
+# MAGIC )
+
+# COMMAND ----------
+
+# DBTITLE 1,国別アクセス数
+# MAGIC %sql
+# MAGIC SELECT 3letter_code as country, sum(cnt) as sum_cnt FROM ktmrdb.access_location
+# MAGIC GROUP BY 3letter_code
+# MAGIC ORDER BY sum_cnt desc
+# MAGIC limit 50
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## ダッシュボードの作成
+# MAGIC 
+# MAGIC Notebook上のプロット結果をまとめてダッシュボードを作成することができます。
+# MAGIC これにより、通常のモニタ業務向けのUIとして使用できます。
+# MAGIC 
+# MAGIC <img src="https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/image/notebook_dashboard.jpg" witdh="1200">
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## 機械学習へ直結
+# MAGIC 
+# MAGIC このNotebookで作成したテーブルデータやアドホックに作成したVIEWのデータを使って、シームレスに機械学習が実施できます。
+# MAGIC 機械学習のサンプル(コードを含む)は以下を参照ください。
+# MAGIC 
+# MAGIC * [Databricks ソリューションアクセラレータ](https://databricks.com/jp/solutions/accelerators)
 
 # COMMAND ----------
 
