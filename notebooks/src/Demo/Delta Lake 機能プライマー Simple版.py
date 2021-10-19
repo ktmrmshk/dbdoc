@@ -127,7 +127,7 @@ display( df_sql )
 
 # COMMAND ----------
 
-# MAGIC %md ## 従来のデータレイクの制限と限界
+# MAGIC %md ### 従来のデータレイクの制限と限界
 # MAGIC 
 # MAGIC -----
 # MAGIC * ファイルのパーティションをユーザーが管理しないといけない
