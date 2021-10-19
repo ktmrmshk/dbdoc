@@ -1,10 +1,11 @@
 # Databricks notebook source
 # MAGIC %md-sandbox
-# MAGIC <h1>Delt Lake機能プライマー</h1>
+# MAGIC <h1>Delta Lake機能プライマー</h1>
 # MAGIC <table>
-# MAGIC   <tr><th>作者</th><th>Jixin Jia (Gin)</th></tr>
-# MAGIC   <tr><td>期日</td><td>2020/06/30</td></tr>
-# MAGIC   <tr><td>バージョン</td><td>1.0</td></tr>
+# MAGIC   <tr><th>作者(Mod)</th><th>Masahiko Kitamura</th></tr>
+# MAGIC   <tr><th>作者(Original)</th><th>Jixin Jia (Gin)</th></tr>
+# MAGIC   <tr><td>期日</td><td>2021/10/15</td></tr>
+# MAGIC   <tr><td>バージョン</td><td>2.0</td></tr>
 # MAGIC </table>
 # MAGIC <img style="margin-top:25px;" src="https://jixjiadatabricks.blob.core.windows.net/images/databricks-logo-small-new.png" width="140">
 # MAGIC <hr>
@@ -46,20 +47,7 @@
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC 
-# MAGIC ### サンプルデータ
-# MAGIC 
-# MAGIC 今回使用するデータはLending Clubが公開している2012年から2017年までの融資審査データです。
-# MAGIC ローン申請者情報(匿名)、現在のローンステータス(延滞、全額支払い済みなど)などが含まれます。
-# MAGIC 
-# MAGIC **データ辞書** https://www.kaggle.com/wendykan/lending-club-loan-data <br>
-# MAGIC 
-# MAGIC <!--<img src="https://jixjiastorage.blob.core.windows.net/public/datasets/lending-club-loan/data_sample.png" width="95%">-->
-
-# COMMAND ----------
-
-# DBTITLE 1,ユニークなパス名を設定(ユーザー間の衝突回避)
+# DBTITLE 1,(デモ用準備) - ユニークなパス名を設定(ユーザー間の衝突回避)
 import re
 
 # Username を取得。
@@ -70,6 +58,105 @@ dbname = f'delta_db_{username}'
 
 print(f'>>> username => {username}')
 print(f'>>> dbname => {dbname}')
+
+# COMMAND ----------
+
+# MAGIC %md ##0. (参考)これまでのデータレイク
+
+# COMMAND ----------
+
+# DBTITLE 1,サンプルCSVデータ
+# MAGIC %fs head /databricks-datasets/Rdatasets/data-001/csv/ggplot2/diamonds.csv
+
+# COMMAND ----------
+
+# DBTITLE 1,CSVファイルをSpark DataFrameとして読み込む
+df = (
+  spark.read.format('csv')
+  .option('Header', True)
+  .option('inferSchema', True)
+  .load('/databricks-datasets/Rdatasets/data-001/csv/ggplot2/diamonds.csv') 
+)
+
+display(df)
+
+# COMMAND ----------
+
+# DBTITLE 1,簡単なETL
+df_cleaned = (
+  df
+  .where('price between 2000 and 2500') # カラムの条件
+  .withColumn('magic_number', df.x * df.y + df.z ) # カラムの追加
+  .select('carat', 'cut', 'color', 'clarity', 'price', 'magic_number') # カラムの抽出
+)
+
+display( df_cleaned )
+
+# COMMAND ----------
+
+# DBTITLE 1,JSONファイルとして書き出す
+( 
+  df_cleaned.write
+  .format('json')
+  .mode('overwrite')
+  .save(f'/tmp/{username}/diamonds_json')
+)
+
+# COMMAND ----------
+
+# DBTITLE 1,書き出されたJSONファイルの確認1
+display( dbutils.fs.ls(f'/tmp/{username}/diamonds_json') )
+
+# COMMAND ----------
+
+# DBTITLE 1,書き出されたJSONファイルの確認2
+# MAGIC %fs head dbfs:/tmp/masahiko_kitamura_databricks_com/diamonds.json/part-00000-tid-1673204391485194256-d600e583-2f23-4605-82dc-ffbda2f18cdd-2003-1-c000.json
+
+# COMMAND ----------
+
+# DBTITLE 1,SQLも使えます
+df.createOrReplaceTempView('diamonds')
+
+df_sql = sql('''
+  SELECT 
+    carat, cut, color, clarity, price, x * y + z as magic_number
+  FROM diamonds
+''')
+
+display( df_sql )
+
+# COMMAND ----------
+
+# MAGIC %md ## 従来のデータレイクの制限と限界
+# MAGIC 
+# MAGIC -----
+# MAGIC * ファイルのパーティションをユーザーが管理しないといけない
+# MAGIC * 細かいファイルがどんどん増えていく
+# MAGIC * ファイル数が増えるにつれて読み込みに時間がかかる
+# MAGIC * レコードは追記のみ(UPDATE, DELETE, MERGEができない)
+# MAGIC * スキーマの整合性はユーザー側でチェックしないといけない
+# MAGIC * 検索条件がパーティションキーでない場合、全てのファイルを開く必要がある
+# MAGIC * Indexingなどの最適化機能がない
+# MAGIC 
+# MAGIC 
+# MAGIC など。
+
+# COMMAND ----------
+
+# MAGIC %md # 1. Delta Lakeの世界
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### サンプルデータ
+# MAGIC 
+# MAGIC 今回使用するデータはLending Clubが公開している2012年から2017年までの融資審査データです。
+# MAGIC ローン申請者情報(匿名)、現在のローンステータス(延滞、全額支払い済みなど)などが含まれます。
+# MAGIC 
+# MAGIC **データ辞書** https://www.kaggle.com/wendykan/lending-club-loan-data <br>
+# MAGIC 
+# MAGIC <!--<img src="https://jixjiastorage.blob.core.windows.net/public/datasets/lending-club-loan/data_sample.png" width="95%">-->
 
 # COMMAND ----------
 
@@ -91,7 +178,16 @@ print(df.count())
 (data, data_rest) = df.randomSplit([0.05, 0.95], seed=123)
 
 # 読み込まれたデータを参照
-display(data)
+display( data )
+
+# COMMAND ----------
+
+# DBTITLE 1,(参考: DS向け) データのサマリを見る
+from pandas_profiling import ProfileReport
+df_profile = ProfileReport(df.toPandas(), minimal=True, title="Profiling Report", progress_bar=False, infer_dtypes=False)
+profile_html = df_profile.to_html()
+
+displayHTML(profile_html)
 
 # COMMAND ----------
 
@@ -140,13 +236,12 @@ sql(f'CREATE TABLE LBS USING delta LOCATION "{delta_path}"')
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC 
 # MAGIC -- データをSELECT文でクエリしてみよう
 # MAGIC Select state, loan_status, count(*) as counts 
 # MAGIC From LBS  
 # MAGIC Group by state, loan_status
 # MAGIC Order by counts desc
-# MAGIC 
-# MAGIC -- コメント
 
 # COMMAND ----------
 
@@ -321,6 +416,11 @@ new_df.write.format('delta').option('mergeSchema','true').mode('append').save(de
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC describe LBS
+
+# COMMAND ----------
+
+# MAGIC %sql
 # MAGIC -- データを見る
 # MAGIC Select *
 # MAGIC From LBS 
@@ -349,7 +449,7 @@ new_df.write.format('delta').option('mergeSchema','true').mode('append').save(de
 # MAGIC %sql
 # MAGIC -- バージョンを指定してスナップショットを取得
 # MAGIC Select * 
-# MAGIC From LBS Version AS OF 3
+# MAGIC From LBS Version AS OF 2
 
 # COMMAND ----------
 
@@ -428,7 +528,8 @@ homeDir = f'/home/{username}/streaming/wikipedia/'
 bronzePath = homeDir + "bronze.delta"
 bronzeCkpt = homeDir + "bronze.checkpoint"
 
-
+# 保存先をリセット
+dbutils.fs.rm(homeDir, True)
 
 #　JSONデータのスキーマ定義
 schema = StructType([
@@ -486,25 +587,23 @@ input_DF = (
 
 # COMMAND ----------
 
-# データフレームの確認
-display(
-  # バッチ型DataFrameとして、表示
-  spark.read.format('delta').load(bronzePath)
-  
-  # Stream型DataFrameとして、表示
-  #spark.readStream.format('delta').load(bronzePath)
-)
+# MAGIC %md ### 以下の2つのコードの違いはどこにありますか?
 
 # COMMAND ----------
 
+# DBTITLE 1,バッチ型DataFrameとして表示
+# データフレームの確認
+df = spark.read.format('delta').load(bronzePath)
+
+display( df )
+
+# COMMAND ----------
+
+# DBTITLE 1,Stream型DataFrameとして表示
 # データフレームの確認2
-display(
-  # バッチ型DataFrameとして、表示
-  #spark.read.format('delta').load(bronzePath)
-  
-  # Stream型DataFrameとして、表示
-  spark.readStream.format('delta').load(bronzePath)
-)
+df = spark.readStream.format('delta').load(bronzePath)
+
+display( df )
 
 # COMMAND ----------
 
@@ -526,7 +625,7 @@ spark.readStream.format('delta').load(bronzePath).createOrReplaceTempView('tmp_w
 
 # MAGIC %md
 # MAGIC ## END
-# MAGIC &copy; 2020 Copyright by Jixin Jia (Gin)
+# MAGIC &copy; 2021 Copyright by Jixin Jia (Gin), Masahiko Kitamura
 # MAGIC <hr>
 
 # COMMAND ----------
@@ -535,6 +634,9 @@ spark.readStream.format('delta').load(bronzePath).createOrReplaceTempView('tmp_w
 sql(f'DROP DATABASE {dbname} CASCADE')
 dbutils.fs.rm(delta_path, True)
 dbutils.fs.rm(homeDir, True)
+dbutils.fs.rm(f'/tmp/{username}', True)
+
+
 
 
 # COMMAND ----------
