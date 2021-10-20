@@ -19,9 +19,9 @@ Admin権限を持つユーザーでDatabricksのWorkspaceにログインした�
 
 1. 左バーの下部にある`Settings`(ギアのアイコン) > `Admin Console`をクリック
 1. ページ遷移後に、上部にあるタブから`Workspace Settings`を選択
-1. `Advanced`セクションにある`Upload data using the UI`を`ON`になっているか確認
+1. `Advanced`セクションにある`DBFS File Browser`を`ON`になっているか確認
 
-<img src="enable_upload_ui.png" width=800>
+<img src="dbfs_browsing_enablement.jpg" width=800>
 
 以上で
 
