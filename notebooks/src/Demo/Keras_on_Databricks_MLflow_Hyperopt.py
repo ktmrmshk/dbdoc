@@ -63,7 +63,7 @@ X_train, X_test, y_train, y_test = train_test_split(cal_housing.data,
 import pandas as pd
 p_df =   pd.concat([pd.DataFrame(X_train, columns=cal_housing.feature_names), pd.DataFrame(y_train, columns=["label"])], axis=1)
 
-display( p_df )
+display(p_df)
 
 # COMMAND ----------
 
@@ -86,6 +86,51 @@ display(p_df)
 # COMMAND ----------
 
 p_df.describe()
+
+# COMMAND ----------
+
+# MAGIC %md ### (補足1) SQLも使えます
+
+# COMMAND ----------
+
+# Pandas datafarme => Spark datafarmeに変換
+spark_df = spark.createDataFrame(p_df)
+
+# SQLのためのtemp viewを作る
+spark_df.createOrReplaceTempView('tmpview_cal_housing')
+
+# Pythonコード内でSQL使用する(Spark Dataframeで結果が返る)
+ret_df = spark.sql('''
+  SELECT HouseAge, max(Medinc), min(Medinc), avg(label) FROM tmpview_cal_housing
+  GROUP BY HouseAge
+''')
+
+# 表示
+display(ret_df)
+
+# 必要であれば、Pandas DataFrameに戻す
+ret_pandas_df = ret_df.toPandas()
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- そのままSQLで書く場合
+# MAGIC 
+# MAGIC SELECT HouseAge, max(Medinc), min(Medinc), avg(label) FROM tmpview_cal_housing
+# MAGIC GROUP BY HouseAge
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### (補足2) Pandas Profilingでデータのサマリを見ることもできます
+
+# COMMAND ----------
+
+from pandas_profiling import ProfileReport
+df_profile = ProfileReport(p_df, minimal=True, title="Profiling Report", progress_bar=False, infer_dtypes=False)
+profile_html = df_profile.to_html()
+
+displayHTML(profile_html)
 
 # COMMAND ----------
 
