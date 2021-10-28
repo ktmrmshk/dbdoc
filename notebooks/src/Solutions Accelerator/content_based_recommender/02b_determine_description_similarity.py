@@ -1,19 +1,19 @@
 # Databricks notebook source
-# MAGIC %md # Introduction
+# MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC The purpose of this notebook is to examine how features may be extracted from product descriptions in order to calculate similarities between products. (Other metadata fields are explored in the notebooks that accompany this one.) These similarities will be used as the basis for making **Related products** recommendations:
+# MAGIC このノートブックの目的は、製品間の類似性を計算するために、製品の説明からどのように特徴を抽出するかを検討することです。(他のメタデータフィールドについては、このノートブックに付随するノートブックで検討します)。これらの類似性は、**関連製品**を推奨するための基礎として使用されます。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_recommendations.png" width="600">
 # MAGIC 
-# MAGIC This notebook should be run on a **Databricks ML 7.3+ cluster**.
+# MAGIC このノートブックは **Databricks ML 7.3+ クラスタ** で実行する必要があります。
 
 # COMMAND ----------
 
-# MAGIC %md **NOTE** The cluster with which this notebook is run should be created using a [cluster-scoped initialization script](https://docs.databricks.com/clusters/init-scripts.html?_ga=2.158476346.1681231596.1602511918-995336416.1592410145#cluster-scoped-init-script-locations) which installs the NLTK WordNet corpus and Averaged Perceptron Tagger.  The following cell can be used to generate such a script but you must associate it with the cluster before running any code that depends upon it:
+# MAGIC %md **注意** このノートブックを実行するクラスターは、NLTK WordNetコーパスとAveraged Perceptron Taggerをインストールする[cluster-scoped initialization script](https://docs.databricks.com/clusters/init-scripts.html?_ga=2.158476346.1681231596.1602511918-995336416.1592410145#cluster-scoped-init-script-locations)を使用して作成する必要があります。 次のセルを使用してこのようなスクリプトを生成することができますが、スクリプトに依存するコードを実行する前に、このスクリプトをクラスターに関連付ける必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Cluster Init Script
+# DBTITLE 1,Cluster Init Scriptの生成
 dbutils.fs.mkdirs('dbfs:/databricks/scripts/')
 
 dbutils.fs.put(
@@ -31,7 +31,7 @@ print(
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 import pandas as pd
 
 from pyspark.sql.types import *
@@ -53,17 +53,17 @@ import shutil
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Prepare Description Data
+# MAGIC %md # Step 1: Descriptionデータの準備
 # MAGIC 
-# MAGIC Titles are useful, but carry limited information.  Longer descriptions (as found in the *description* field of our dataset) provide quite a bit more detail which we might use to identify similar items.
+# MAGIC タイトルは便利ですが、情報量は限られています。 長い説明文（データセットの*description*フィールドにあるような）は、似たようなアイテムを識別するために使用できる詳細な情報を提供します。
 # MAGIC 
-# MAGIC But having more words with which to make a comparison means more data to process and more complexity to deal with.  To help us with that, we can employ one of several dimension reduction techniques which attempt to condense text into a much more narrow set of *topics* or *concepts* which can then be used as the basis for comparison.
+# MAGIC しかし、比較対象となる単語が多いということは、処理するデータが増え、複雑になることを意味します。 そこで、テキストをより狭い範囲の「トピック」や「コンセプト」に凝縮して、比較の基礎とする次元削減技術を利用することができます。
 # MAGIC 
-# MAGIC To get started exploring this direction, let's flatten the array that holds our description data and tokenize the words in the text as we did earlier:
+# MAGIC この方向性を探るために、説明データを格納する配列をフラット化し、先ほどのようにテキスト内の単語をトークン化してみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Descriptions
+# DBTITLE 1,Descriptionsの抽出
 # retrieve descriptions for each product
 descriptions = (
   spark
@@ -85,7 +85,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Words from Descriptions
+# DBTITLE 1,Descriptionsから単語を抽出
 # split titles into words
 tokenizer = RegexTokenizer(
     minTokenLength=2, 
@@ -100,19 +100,19 @@ display(description_words)
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2a: Extract LDA Topic Features
+# MAGIC %md # Step 2a: LDAトピック特徴量を抽出
 # MAGIC 
-# MAGIC Let's now explore how we might use [Latent Dirichlet Allocation (LDA)](https://towardsdatascience.com/light-on-math-machine-learning-intuitive-guide-to-latent-dirichlet-allocation-437c81220158) to reduce our descriptions to a condensed set of topics:
+# MAGIC それでは、[Latent Dirichlet Allocation (LDA)](https://towardsdatascience.com/light-on-math-machine-learning-intuitive-guide-to-latent-dirichlet-allocation-437c81220158)を使って、記述をトピックの凝縮されたセットに還元する方法を探ってみましょう。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_LDA.gif" width="500">
 # MAGIC 
-# MAGIC While the math behind LDA can get complex, the technique itself is fairly easy to understand.  In a nutshell, we examine the co-occurrence of words our description text.  "Clusters" of words that occur with each other with some regularity represent *topics*, though to a human such topics might be a little challenging to comprehend. Still, we can score each description based on its alignment with each of the topics discovered across the descriptions.  Those per-topic scores then provide us the basis for locating similar documents in the dataset.
+# MAGIC LDAの背後にある数学は複雑ですが、技術自体は非常に理解しやすいものです。 簡単に言うと、説明文に含まれる単語の共起を調べるのです。 ある程度の規則性を持って互いに出現する単語の「クラスター」は、「トピック」を表していますが、人間にはそのようなトピックを理解するのは少し難しいかもしれません。しかし、各説明文を、説明文全体から発見された各トピックとの整合性に基づいてスコアリングすることができます。 これらのトピックごとのスコアは、データセット内の類似したドキュメントを見つけるための基礎となります。
 # MAGIC 
-# MAGIC To perform the LDA calculations, we must first standardize the words in our descriptions using lemmatization, just as we did with our title data:
+# MAGIC LDAの計算を行うためには、タイトルデータと同じように、レマタイズを用いて説明文中の単語を標準化する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Standardize Words
+# DBTITLE 1,単語の標準化
 # declare the udf
 @pandas_udf(ArrayType(StringType()))
 def lemmatize_words(iterator: Iterator[pd.Series]) -> Iterator[pd.Series]:
@@ -164,13 +164,13 @@ display(description_lemmata)
 
 # COMMAND ----------
 
-# MAGIC %md We must now count the occurrence of the words in our dataset.  Because we are working with many more words than were found in our titles, we'll use the [HashingTF transform](https://spark.apache.org/docs/2.2.0/ml-features.html#tf-idf) to do this work.  
+# MAGIC %md 次に、データセット内の単語の出現数を数えなければなりません。 タイトルに含まれるよりも多くの単語を扱っているので、この作業には[HashingTF変換](https://spark.apache.org/docs/2.2.0/ml-features.html#tf-idf)を使います。 
 # MAGIC 
-# MAGIC While the HashingTF and CountVectorizer appear to be performing the same work, the HashingTF transform is using a short-cut to speed up the process. Instead of creating a distinct list of words from across all the words in our descriptions, calculating term-frequency scores for each, and then limiting the resulting vector to the top occurring of those words, the HashingTF transform hashes each word to an integer value and uses that hashed value as the word's index in our vector. This allows us to skip the step of creating a word-lookup table and performing our count against it.  Instead, we can simply calculate a hash and add one to the value in the associated index position.  The trade off is that hash collisions will occur so that there will be situations where two unrelated words are counted as if they were the same.  If we are willing to accept the possibility of a little sloppiness in order to pick up substantial performance gains, then the HashingTF transform is the way to go:
+# MAGIC HashingTFとCountVectorizerは同じ作業を行っているように見えますが、HashingTF変換では処理を高速化するためのショートカットを使用しています。説明文中のすべての単語から個別の単語リストを作成し、それぞれについて用語頻度スコアを計算し、結果として得られるベクトルをこれらの単語のうち上位に出現するものに限定する代わりに、HashingTF変換は各単語を整数値にハッシュ化し、そのハッシュ化された値をベクトル内の単語のインデックスとして使用します。これにより、単語のルックアップテーブルを作成し、それに対してカウントを実行するというステップを省略することができます。 代わりに、ハッシュを計算して、関連するインデックスの位置の値に1を加えるだけでよいのです。 その代償として、ハッシュの衝突が起こり、2つの無関係な単語があたかも同じものであるかのようにカウントされる事態が発生します。 パフォーマンスを大幅に向上させるために、多少のずさんさの可能性を受け入れるのであれば、HashingTF変換がお勧めです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Count Words
+# DBTITLE 1,単語のカウント
 # get word counts from descriptions
 description_tf = (
   HashingTF(
@@ -185,11 +185,11 @@ display(description_tf)
 
 # COMMAND ----------
 
-# MAGIC %md With word counts in place, we can now apply LDA to define topics and score our descriptions relative to these.  Depending on the number of iterations and the size of your cluster, this step may take a while to complete.  With that in mind, notice that we are *learning* our LDA topics using a 25% random sample of our overall dataset which should allow us to arrive at valid topics while limiting computation time:
+# MAGIC %md 単語数が確定したので、今度はLDAを適用してトピックを定義し、そのトピックに対する記述をスコアリングします。 反復回数やクラスタの大きさによっては、このステップの完了に時間がかかる場合があります。 この点を考慮して、データセット全体の25%のランダムサンプルを使用してLDAトピックを*学習*していることに注意してください。これにより、計算時間を短縮しながら有効なトピックを得ることができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply LDA
+# DBTITLE 1,LDAを適用
 # identify LDA topics & score descriptions against these
 description_lda = (
   LDA(
@@ -220,11 +220,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md The LDA scores now serve as features with which we can evaluate description similarities.  As before, we must normalize these before proceeding with that step:
+# MAGIC %md LDAスコアは、記述の類似性を評価するための特徴となります。 以前のように、このステップに進む前に、これらを正規化する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Normalize LDA Features
+# DBTITLE 1,LDA特徴量の正規化
 description_lda = spark.table('DELTA.`/mnt/reviews/tmp/description_lda`')
 
 description_lda_norm = (
@@ -236,21 +236,21 @@ display(description_lda_norm.select('id','asin','description', 'features'))
 
 # COMMAND ----------
 
-# MAGIC %md Before looking at how we will calculate similarities using our normalized features, let's examine another dimension reduction technique.
+# MAGIC %md 正規化された特徴量を使って類似性を計算する方法を見る前に、別の次元削減技術を見てみましょう。
 
 # COMMAND ----------
 
 # MAGIC %md # Step 2b: Extract Word2Vec *Concept* Features
 # MAGIC 
-# MAGIC LDA scores our descriptions on their relationship to discovered topics using words found anywhere in the description. In other words, the sequencing of words in a description is not taken into consideration.  [Word2Vec](https://israelg99.github.io/2017-03-23-Word2Vec-Explained/) on the other hand examines word proximity to get at *concepts* within the descriptions:
+# MAGIC LDAは、説明文の中の任意の場所にある単語を使って、発見されたトピックとの関係をスコアリングします。つまり、説明文中の単語の順序は考慮されません。 一方、[Word2Vec](https://israelg99.github.io/2017-03-23-Word2Vec-Explained/)では、記述の中の*概念*を得るために、単語の近接性を調べます。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_w2v.gif" width="600">
 # MAGIC 
-# MAGIC **NOTE** Word2Vec does not require any preprocessing other than tokenization.  Also, note that Word2Vec can take a while to run so that we're fitting the model on only 25% of our data.
+# MAGIC **注意** Word2Vecはトークン化以外の前処理を必要としません。 また、Word2Vecの実行には時間がかかるため、データの25%のみでモデルをフィッティングしていることに注意してください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply Word2Vec
+# DBTITLE 1,Word2Vecの適用
 description_words = description_words.cache()
 
 # generate w2v set
@@ -290,7 +290,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Normalize Word2Vec
+# DBTITLE 1,Word2Vecの正規化
 description_w2v = spark.table('DELTA.`/mnt/reviews/tmp/description_w2v`')
 
 description_w2v_norm = (
@@ -302,13 +302,13 @@ display(description_w2v_norm.select('id','asin','description', 'w2v', 'features'
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Calculate Description Similarities
+# MAGIC %md # Step 3: Descriptionの類似性の算出
 # MAGIC 
-# MAGIC So, how might we use either our LDA or Word2Vec features to find similar items?  Previously, we used LSH and we could do that again here.  But another technique we could use is k-means clustering.
+# MAGIC では、LDAやWord2Vecの機能を使って、似たようなアイテムを見つけるにはどうすればいいのでしょうか？ 前回はLSHを使いましたが、今回も同じように使えます。 しかし、もう一つの手法として、k-meansクラスタリングを使うこともできます。
 # MAGIC 
-# MAGIC Using k-means clustering we assign products to clusters based on feature similarity.  We can then use cluster assignment to limit our searches for similar products to those found within a cluster (much like we limit our similarity search to products in a shared bucket using LSH).  In Spark, we have two basic options for this: traditional k-means and bisecting k-means. Either is applicable but they will produce different results.  Regardless of which you choose, you can use traditional [elbow techniques](https://bl.ocks.org/rpgove/0060ff3b656618e9136b) to identify an optimal number of clusters though consideration of query performance against the result set is also important.  Here, we'll opt for 50 clusters as this seems to provide us a reasonable split on our data.  While we don't often speak about clustering in these terms, it's important to consider the application of clustering in this scenario as an approximate technique, much like LSH:
+# MAGIC k-means クラスタリングでは、特徴の類似性に基づいて商品をクラスタに割り当てます。 クラスタを割り当てることで、類似した製品の検索をクラスタ内の製品に限定することができます（LSHを使って共有バケット内の製品に類似性検索を限定するのと同じです）。 Sparkでは、従来のk-meansとbisecting k-meansという2つの基本的なオプションがあります。どちらを使ってもいいのですが、結果は異なります。 どちらを選んでも、従来の[elbow technique](https://bl.ocks.org/rpgove/0060ff3b656618e9136b)を使って最適なクラスタ数を特定することができますが、結果セットに対するクエリのパフォーマンスを考慮することも重要です。 ここでは、50クラスタを選択します。これは、私たちのデータを合理的に分割することができると思われるからです。 クラスタリングをこのような言葉で表現することはあまりありませんが、このシナリオでのクラスタリングの適用は、LSHのような近似的な手法であると考えることが重要です。
 # MAGIC 
-# MAGIC **NOTE** The clustered/bucketed data is being persisted to Delta Lake for re-use in a later notebook. In addition, we are persisting the clustering model using mlflow for similar re-use.
+# MAGIC **NOTE** クラスタ化/バケット化されたデータは、後のノートブックで再利用するためにDelta Lakeに永続化されています。さらに、同様の再利用のためにmlflowを使ってクラスタリングモデルを永続化しています。
 
 # COMMAND ----------
 
@@ -356,15 +356,15 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md With our data assigned to a cluster, locating similar products is fairly straightforward.  All we need to do is perform an exhaustive comparison within each cluster/bucket.
+# MAGIC %md データがクラスターに割り当てられていれば、類似した製品を見つけることは非常に簡単です。 必要なのは、各クラスタ/バケット内での徹底的な比較です。
 # MAGIC 
-# MAGIC When using LSH, this work including the calculation of the Euclidean distance between vectors was performed for us.  Here, we'll need to perform our distance calculation using a custom function. 
+# MAGIC LSHを使用した場合、ベクトル間のユークリッド距離の計算など、この作業は自動的に行われます。 ここでは、カスタム関数を使用して距離計算を行う必要があります。
 # MAGIC 
-# MAGIC Euclidean distance calculations between two vectors are fairly easy to perform.  However, the pandas UDFs we used before do not have a means to accept a vector in its native format.  But Scala does.  By registering our Scala function for the calculation of Euclidean distance between two vectors with the Spark SQL engine, we can easily apply our function to data in a Spark DataFrame using Python as will be demonstrated in a later cell:
+# MAGIC 2つのベクトル間のユークリッド距離計算は、かなり簡単に実行できます。 しかし、以前使用したpandasのUDFには、ネイティブフォーマットのベクトルを受け入れる手段がありません。 しかし，Scalaにはあります． 2つのベクトル間のユークリッド距離を計算するScala関数をSpark SQLエンジンに登録することで、後のセルで紹介するように、Pythonを使ってSpark DataFrameのデータに関数を簡単に適用することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Function for Distance Calculations
+# DBTITLE 1,距離計算の関数を定義する
 # MAGIC %scala
 # MAGIC 
 # MAGIC import math._
@@ -378,20 +378,20 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md And now let's make the recommendations, limiting our comparisons to those items in the same bucket (cluster) as our sample product:
+# MAGIC %md それでは、サンプル製品と同じバケツ（クラスタ）に入っているアイテムに限定して、レコメンデーションを行ってみましょう。
 # MAGIC 
-# MAGIC **NOTE** We will use the same sample product as was used in the last notebook.
+# MAGIC **NOTE** 前回のノートで使用したサンプル製品と同じものを使用します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Sample Product
+# DBTITLE 1,サンプル製品の取得
 sample_product = descriptions_clustered.filter('asin==\'B01G6M7CLK\'')
 
 display(sample_product)
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Similar Descriptions
+# DBTITLE 1,似たような記述を検索する
 display(
   descriptions_clustered
     .withColumnRenamed('features', 'features_b')
@@ -408,7 +408,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop Cached Datasets
+# DBTITLE 1,キャッシュの削除
 def list_cached_dataframes():
     return [(k,v) for (k,v) in [(k,v) for (k, v) in globals().items() if isinstance(v, DataFrame)] if v.is_cached]
   
@@ -417,4 +417,4 @@ for name, obj in list_cached_dataframes():
 
 # COMMAND ----------
 
-# MAGIC %md Unlike our TF-IDF scored titles, the basis for matching descriptions is a little harder to intuit from a simple viewing of the data.  The notion of *topics* or *concepts* are a bit more elusive than simple word-count derived scores.  Still, a review of the descriptions gives us a sense as to why some descriptions are considered more similar than others. To constrain things a bit further, we might consider limiting our LDA and Word2Vec feature generation to a smaller number of words from the beginning of the description as this is the part of the text most likely to directly tie into the key aspects of the product.  With Word2Vec, this is done through a simple argument setting.  With LDA, we would need to add a step to truncate our tokenized words before performing lemmatization.
+# MAGIC %md TF-IDFでスコアリングしたタイトルとは異なり、説明文のマッチングの根拠は、データを単純に見ただけでは少しわかりにくいものです。 トピック」や「コンセプト」という概念は、単純なワードカウントによるスコアとは異なり、少し捉えにくいものです。 しかし、説明文を見てみると、なぜある説明文が他の説明文よりも似ていると考えられるのかがわかります。さらに、LDAとWord2Vecの特徴量を生成する際には、製品の重要な側面に直接結びつく可能性が高い文章の部分であるため、説明文の最初からより少ない数の単語に制限することを検討することができます。 Word2Vecでは、簡単な引数の設定でこれを行います。 LDAの場合は、レマタイズを行う前に、トークン化された単語を切り詰めるステップを追加する必要があります。
