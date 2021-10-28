@@ -1,21 +1,21 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to prepare the dataset we will use to explore content-based filtering recommenders.  This notebook should be run on a **Databricks ML 7.3+ cluster**.
+# MAGIC %md このノートブックの目的は、コンテンツベースのフィルタリングレコメンダーを調査するために使用するデータセットを準備することです。 このノートブックは **Databricks ML 7.3+ クラスタ** 上で実行する必要があります。
 
 # COMMAND ----------
 
-# MAGIC %md # Introduction
+# MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC Content-based recommenders enable the familiar **Related products**-type of recommendation.  These recommenders help customers identify product alternatives and better ensure that customer interactions result in sales:
+# MAGIC コンテンツベースのレコメンダーは、おなじみの**関連商品**タイプのレコメンデーションを可能にします。 これらのレコメンダーは、お客様が製品の代替品を特定するのに役立ち、お客様との対話がより確実に売上に結びつくようにします。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_recommendations.png" width="600">
 # MAGIC 
-# MAGIC The data used to build such recommendations can also be used to build more expansive recommendations, typical of the **Based on Your Recent History**-type recommendations, which take into consideration feature preferences aligned with user feedback:
+# MAGIC このようなレコメンデーションを構築するために使用されたデータは、より広範囲なレコメンデーションを構築するために使用することもできます。典型的な**Based on Your Recent History**タイプのレコメンデーションでは、ユーザーのフィードバックに沿った機能の好みを考慮します。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_profile_recs2.png" width=600>
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 from pyspark.sql.types import *
 from pyspark.sql.functions import count,  min, max, instr, monotonically_increasing_id, pandas_udf
 
@@ -245,7 +245,7 @@ metadata.count()
 
 # COMMAND ----------
 
-# DBTITLE 1,Number of ASINs with More Than One Record
+# DBTITLE 1,2つ以上のレコードを持つASINの数
 # count number of records per ASIN value
 (
   metadata
