@@ -31,19 +31,21 @@ import html
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Download & Decompress Files
+# MAGIC %md # Step 1: ファイルのダウンロードと解凍
 # MAGIC 
-# MAGIC The basic building block of this type of recommender is product data.  These data may include information about the manufacturer, price, materials, country of origin, *etc.* and are typically accompanied by friendly product names and descriptions.  In this series of notebooks, we'll focus on making use of the unstructured information found in product titles and descriptions as well as product category information.
+# MAGIC この種のレコメンダーの基本的な構成要素は、製品データです。 これらのデータには、メーカー、価格、素材、原産国などの情報が含まれており、一般的には親しみやすい商品名や説明文が添えられています。 この連載では、商品のタイトルや説明文に含まれる非構造化情報や、商品のカテゴリー情報を活用することに焦点を当てていきます。
 # MAGIC 
-# MAGIC The dataset we will use is the [2018 Amazon reviews dataset](http://deepyeti.ucsd.edu/jianmo/amazon/).  It consists of several files representing both user-generated reviews and product metadata. Focusing on the 5-core subset of data in which all users and items have at least 5 reviews, we will download the gzip-compressed files to the *gz* folder associated with a [cloud-storage mount point](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs) identified as */mnt/reviews* before decompressing the metadata JSON files to a folder named *metadata* and reviews JSON files to a folder named *reviews*.  Please note that the files associated with the *Books* category of products is being skipped as repeated requests for this file seem to be triggering download throttling from the file server:
+# MAGIC 今回使用するデータセットは、[2018 Amazon reviews dataset](http://deepyeti.ucsd.edu/jianmo/amazon/)です。 このデータセットは、ユーザーが作成したレビューと商品のメタデータの両方を表す複数のファイルから構成されています。すべてのユーザーとアイテムが少なくとも5つのレビューを持つ5コアのサブセットに焦点を当て、gzip圧縮されたファイルを、*/mnt/reviews*と名付けられた[cloud-storage mount point](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs)に関連付けられた*gz*フォルダにダウンロードしてから、メタデータのJSONファイルを*metadata*というフォルダに、レビューのJSONファイルを*reviews*というフォルダに解凍していきます。 なお、製品の*Books*カテゴリーに関連するファイルはスキップされています。これは、このファイルへの繰り返しのリクエストが、ファイルサーバーからのダウンロードを制限する原因になっているようです。
+# MAGIC 
+# MAGIC 
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_folder_structure2.png' width=250>
 # MAGIC 
-# MAGIC **NOTE** We are providing code for the downloading of these files to your storage account as similar code is supplied by the data provider.  However, you are strongly encouraged to visit the download site referenced above to review the terms and conditions for the use of this data before executing the code.  Also note that the variable *perform_download* is set to *False* to prevent the unintended downloading of data from the provider.  You'll need to change that variable's value to enable the download code in this notebook.
+# MAGIC **注意** データ提供者から同様のコードが提供されているため、お客様のストレージ・アカウントにこれらのファイルをダウンロードするためのコードを提供しています。 ただし、コードを実行する前に、上記のダウンロードサイトにアクセスして、このデータの使用に関する条件を確認することを強くお勧めします。 また、データ提供者から意図せずにデータがダウンロードされることを防ぐために、変数*perform_download*が*False*に設定されていることに注意してください。 このノートブックのダウンロードコードを有効にするには、この変数の値を変更する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Download Configuration
+# DBTITLE 1,Configurationのダウンロード
 # directories for data files
 download_path = '/mnt/reviews/bronze/gz'
 metadata_path = '/mnt/reviews/bronze/metadata'
@@ -53,7 +55,7 @@ perform_download = False # set to True if you wish to redownload the gzip files
 
 # COMMAND ----------
 
-# DBTITLE 1,Files to Download
+# DBTITLE 1,ファイルのDownload
 file_urls_to_download = [
   'http://deepyeti.ucsd.edu/jianmo/amazon/categoryFiles/AMAZON_FASHION.json.gz',
   'http://deepyeti.ucsd.edu/jianmo/amazon/metaFiles/meta_AMAZON_FASHION.json.gz',
@@ -117,7 +119,7 @@ file_urls_to_download = [
 
 # COMMAND ----------
 
-# DBTITLE 1,Reset Directories for Downloads
+# DBTITLE 1,ダウンロードディレクトリの初期化
 if perform_download:
 
   # clean up directories from prior runs
@@ -141,7 +143,7 @@ if perform_download:
 
 # COMMAND ----------
 
-# DBTITLE 1,Download & Decompress Files
+# DBTITLE 1,ダウンロード・解答
 if perform_download:
   
   # for each file to download:
@@ -171,11 +173,11 @@ if perform_download:
 
 # COMMAND ----------
 
-# MAGIC %md Let's verify we now have decompressed JSON files in our metadata and reviews folders:
+# MAGIC %md 解凍されたJSONファイルがmetadataとreviewsフォルダにあることを確認しましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,List Metadata Files
+# DBTITLE 1,メタデータの確認(List)
 display(
   dbutils.fs.ls(metadata_path)
   )
@@ -189,19 +191,19 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Prep Metadata
+# MAGIC %md # Step 2: Metadataの準備
 # MAGIC 
-# MAGIC With our metadata files in place, let's extract the relevant information from the documents and make the information more easily queriable.  In reviewing the metadata files, it appears the brand, category, title & description fields along with each product's unique identifier, it's Amazon Standard Identification Number (*asin*), will be of useful.  Quite a bit more information is available in the metadata files but we'll limit our attention to just these fields:
+# MAGIC メタデータファイルを用意したら、ドキュメントから関連情報を抽出し、情報をより簡単に検索できるようにしましょう。 メタデータファイルを見てみると、ブランド、カテゴリー、タイトル、説明の各フィールドと、各商品のユニークな識別子であるAmazon Standard Identification Number (*asin*)が役に立ちそうです。 メタデータファイルには他にも多くの情報が含まれていますが、ここではこれらのフィールドだけに注目します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Prepare Environment for Data
+# DBTITLE 1,データのための環境設定
 _ = spark.sql('DROP DATABASE IF EXISTS reviews CASCADE')
 _ = spark.sql('CREATE DATABASE reviews')
 
 # COMMAND ----------
 
-# DBTITLE 1,Extract Common Elements from Metadata JSON
+# DBTITLE 1,メタデータJSONから共通要素を抽出
 # common elements of interest from json docs (only import ones actually used later)
 metadata_common_schema = StructType([
 	StructField('asin', StringType()),
@@ -224,11 +226,11 @@ display(raw_metadata)
 
 # COMMAND ----------
 
-# MAGIC %md A [notebook](https://colab.research.google.com/drive/1Zv6MARGQcrBbLHyjPVVMZVnRWsRnVMpV) made available by the data host indicates some entries may be invalid and should be removed. These records are identified by the presence of the *getTime* JavaScript method call in the *title* field:
+# MAGIC %md データホストが提供する[ノートブック](https://colab.research.google.com/drive/1Zv6MARGQcrBbLHyjPVVMZVnRWsRnVMpV)は、いくつかのエントリが無効である可能性があり、削除する必要があることを示しています。これらのレコードは、*title*フィールドに*getTime*というJavaScriptのメソッドコールがあることで識別されます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Eliminate Unnecessary Records
+# DBTITLE 1,不要なレコードを削除
 # remove bad records and add ID for deduplication work
 metadata = (
   raw_metadata
@@ -239,7 +241,7 @@ metadata.count()
 
 # COMMAND ----------
 
-# MAGIC %md The dataset also contains a few duplicate entries based on the *asin* value:
+# MAGIC %md また、このデータセットには、「*asin*」の値に基づいて、いくつかの重複したエントリが含まれています。
 
 # COMMAND ----------
 
@@ -254,11 +256,11 @@ metadata.count()
 
 # COMMAND ----------
 
-# MAGIC %md Using an artificial id, we will eliminate the duplicates by arbitrarily selecting one record for each ASIN to remain in the dataset.  Notice we are caching the dataframe within which this id is defined in order to fix its value.  Otherwise, the value generated by *monotonically_increasing_id()* will be inconsistent during the self-join:
+# MAGIC %md 人工的なIDを使って、各ASINのレコードを任意に1つ選び、データセットに残すことで、重複を排除します。 このidが定義されたデータフレームをキャッシュして、その値を固定していることに注意してください。 そうしないと、*monotonically_increasing_id()*で生成された値は、self-joinの際に矛盾してしまいます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Deduplicate Dataset
+# DBTITLE 1,データセットの重複排除
 # add id to enable de-duplication and more efficient lookups (cache to fix id values)
 metadata_with_dupes = (
   metadata
@@ -282,7 +284,7 @@ deduped_metadata.count()
 
 # COMMAND ----------
 
-# DBTITLE 1,Verify Duplicates Eliminated
+# DBTITLE 1,重複排除の確認
 # should return 0 if no duplicates
 (
   deduped_metadata
@@ -293,11 +295,11 @@ deduped_metadata.count()
 
 # COMMAND ----------
 
-# MAGIC %md To make our next data processing steps easier to perform, we will persist the deduplicated data to storage.  By using Delta Lake as the storage format, we are enabling a set of [data modification statements](https://docs.databricks.com/delta/delta-update.html) which we will employ later:
+# MAGIC %md 次のデータ処理を簡単に行うために、重複排除されたデータをストレージに永続化する。 ストレージのフォーマットとしてDelta Lakeを使用することで、後に使用する[data modification statement](https://docs.databricks.com/delta/delta-update.html)のセットが可能になります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Deduplicated Data
+# DBTITLE 1,重複排除の永続化
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS reviews.metadata')
 
@@ -328,14 +330,14 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop Cached Data
+# DBTITLE 1,キャッシュの削除
 _ = metadata_with_dupes.unpersist()
 
 # COMMAND ----------
 
-# MAGIC %md With our deduplicated data in place, let's turn now to the cleansing of some of the fields.  Taking a close look at the *description* field, we can see there are unescaped HTML characters and full HTML tags which we need to clean up.  We can see some similar cleansing is needed for the *title* and the *category* fields.  With the *category* field, it appears that the category hierarchy breaks down at a level where an HTML tag is encountered.  For that field, we will truncate the category information at the point a tag is discovered.
+# MAGIC %md 重複排除されたデータができたので、次にいくつかのフィールドのクレンジングをしてみましょう。 description*フィールドをよく見てみると、エスケープされていないHTML文字や完全なHTMLタグがあり、これをクリーンアップする必要があります。 また、*title*と*category*フィールドにも同様のクレンジングが必要です。 category*フィールドでは、HTMLタグが発生するレベルでカテゴリ階層が壊れているように見えます。 このフィールドでは、タグが検出された時点でカテゴリ情報を切り詰めます。
 # MAGIC 
-# MAGIC To make this code easier to implement, we'll make use of a [pandas UDF](https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html) and update our data in place:
+# MAGIC このコードを簡単に実装するために、[pandas UDF](https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html)を利用し、その場でデータを更新することにします。
 
 # COMMAND ----------
 
@@ -350,7 +352,7 @@ _ = spark.udf.register('unescape_html', unescape_html)
 
 # COMMAND ----------
 
-# DBTITLE 1,Cleanse Titles
+# DBTITLE 1,タイトルのクレンジング
 # MAGIC %sql
 # MAGIC 
 # MAGIC MERGE INTO reviews.metadata x
@@ -369,7 +371,7 @@ _ = spark.udf.register('unescape_html', unescape_html)
 
 # COMMAND ----------
 
-# DBTITLE 1,Cleanse Descriptions
+# DBTITLE 1,Descriptionsのクレンジング
 # MAGIC %sql
 # MAGIC 
 # MAGIC MERGE INTO reviews.metadata x
@@ -392,7 +394,7 @@ _ = spark.udf.register('unescape_html', unescape_html)
 
 # COMMAND ----------
 
-# DBTITLE 1,Cleanse Categories
+# DBTITLE 1,Categoriesのクレンジング
 # MAGIC %sql
 # MAGIC 
 # MAGIC MERGE INTO reviews.metadata x
@@ -421,26 +423,26 @@ _ = spark.udf.register('unescape_html', unescape_html)
 
 # COMMAND ----------
 
-# DBTITLE 1,Cleanup Delta Table
+# DBTITLE 1,Delta Tableのクリーンアップ
 spark.conf.set('spark.databricks.delta.retentionDurationCheck.enabled', False)
 _ = spark.sql('VACUUM reviews.metadata RETAIN 0 HOURS')
 
 # COMMAND ----------
 
-# MAGIC %md Let's now see how our cleansed metadata appears:
+# MAGIC %md それでは、クレンジングされたメタデータがどのように表示されるか見てみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Review Cleansed Metadata
+# DBTITLE 1,クレンジング済みMetadataの確認
 display(
   spark.table('reviews.metadata')
   )
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Prep Reviews
+# MAGIC %md # Step 3: データ準備のレビュー
 # MAGIC 
-# MAGIC As with our metadata files, there are only a limited number of fields in the reviews JSON documents relevant to our needs. We'll retrieve the ASIN for each product as well as the reviewer's ID and the time of their review.  Fields such as whether a purchase was verified or the number of other users who found the review could be useful but we'll leave them be for now:
+# MAGIC メタデータファイルと同様に、レビューのJSONドキュメントには、私たちのニーズに関連する限られた数のフィールドしかありません。私たちは、各製品のASIN、レビュアーのID、レビューの時間を取得します。 購入が確認されたかどうかや、レビューを見つけた他のユーザーの数などのフィールドは有用かもしれませんが、今のところはそのままにしておきます。
 
 # COMMAND ----------
 
@@ -470,11 +472,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md A quick check for duplicates finds that we're have a little clean up to do.  While maybe not truly duplicates, if a user submits multiple reviews on a single product, we want to take the latest of these as their go-forward review. From there, we want to make sure the system is not capturing multiple records for that same, last date and time:
+# MAGIC %md 重複していないかどうかを確認したところ、少し整理しなければならないことがわかりました。 本当の意味での重複ではないかもしれませんが、ユーザーが1つの製品に複数のレビューを投稿した場合、最新のレビューを今後のレビューとして採用したいと考えています。そこから、システムが同じ最終日時の複数の記録を取得していないことを確認したいのです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Deduplicate Reviews
+# DBTITLE 1,重複排除の確認
 # tack on sequential ID
 reviews_with_duplicates = (
   reviews.withColumn('rid', monotonically_increasing_id())
@@ -506,11 +508,11 @@ display(deduped_reviews)
 
 # COMMAND ----------
 
-# MAGIC %md Let's now persist our data to a Delta Lake table before proceeding:
+# MAGIC %md 先に進む前に、データをDelta Lakeのテーブルに永続化させましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Deduplicated Data
+# DBTITLE 1,重複排除の永続化
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS reviews.reviews')
 
@@ -536,16 +538,16 @@ _ = spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop Cached Dataset
+# DBTITLE 1,キャッシュの削除
 _ = reviews_with_duplicates.unpersist()
 
 # COMMAND ----------
 
-# MAGIC %md To make joining to the product metadata easier, we'll add the product ID generated earlier with our metadata to our reviews table:
+# MAGIC %md 商品のメタデータとの結合を容易にするために、先にメタデータで生成した商品IDをレビューテーブルに追加します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Update Reviews with Product IDs
+# DBTITLE 1,Product IDsを使ってReviewsをアップデート
 _ = spark.sql('ALTER TABLE reviews.reviews ADD COLUMNS (product_id long)')
 
 # retrieve asin-to-id map
@@ -570,6 +572,6 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Cleanup Delta Table
+# DBTITLE 1,Delta Tableのクリーンアップ
 spark.conf.set('spark.databricks.delta.retentionDurationCheck.enabled', False)
 _ = spark.sql('VACUUM reviews.reviews RETAIN 0 HOURS')
