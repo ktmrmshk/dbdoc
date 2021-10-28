@@ -143,7 +143,7 @@ if perform_download:
 
 # COMMAND ----------
 
-# DBTITLE 1,ダウンロード・解答
+# DBTITLE 1,ダウンロード・解凍
 if perform_download:
   
   # for each file to download:

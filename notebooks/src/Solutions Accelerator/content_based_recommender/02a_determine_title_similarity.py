@@ -1,19 +1,20 @@
 # Databricks notebook source
-# MAGIC %md # Introduction
+# MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC The purpose of this notebook is to examine how features may be extracted from product titles in order to calculate similarities between products. (Other metadata fields are explored in the notebooks that follow this one.) These similarities will be used as the basis for making **Related products** recommendations:
+# MAGIC このノートブックの目的は、製品間の類似性を計算するために、製品タイトルからどのように特徴を抽出できるかを調べることである。(これらの類似性は、**関連製品**を推奨するための基礎として使用されます。
+# MAGIC 
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_recommendations.png" width="600">
 # MAGIC 
-# MAGIC This notebook should be run on a **Databricks ML 7.3+ cluster**.
+# MAGIC このノートブックは **Databricks ML 7.3+ クラスタ** で実行する必要があります。
 
 # COMMAND ----------
 
-# MAGIC %md **NOTE** The cluster with which this notebook is run should be created using a [cluster-scoped initialization script](https://docs.databricks.com/clusters/init-scripts.html?_ga=2.158476346.1681231596.1602511918-995336416.1592410145#cluster-scoped-init-script-locations) which installs the NLTK WordNet corpus and Averaged Perceptron Tagger.  The following cell can be used to generate such a script but you must associate it with the cluster before running any code that depends upon it:
+# MAGIC %md **注意** このノートブックを実行するクラスタは、NLTK WordNetコーパスとAveraged Perceptron Taggerをインストールする[cluster-scoped initialization script](https://docs.databricks.com/clusters/init-scripts.html?_ga=2.158476346.1681231596.1602511918-995336416.1592410145#cluster-scoped-init-script-locations)を使用して作成する必要があります。 以下のセルを使用してこのようなスクリプトを生成することができますが、スクリプトに依存するコードを実行する前に、このスクリプトをクラスターに関連付ける必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Cluster Init Script
+# DBTITLE 1,Cluster Init Scriptの生成
 dbutils.fs.mkdirs('dbfs:/databricks/scripts/')
 
 dbutils.fs.put(
@@ -31,7 +32,7 @@ print(
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 import nltk
 
 import pandas as pd
@@ -52,13 +53,13 @@ import shutil
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Prepare Title Data
+# MAGIC %md # Step 1: タイトルデータの準備
 # MAGIC 
-# MAGIC If our goal is to recommend highly similar products, we might identify such products based on product names.  This information is captured in the *title* field within this dataset:
+# MAGIC 類似性の高い製品を推奨することを目的としている場合、製品名に基づいてそのような製品を特定することがあります。 この情報は、このデータセットの*タイトル*フィールドに取り込まれます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Titles
+# DBTITLE 1,タイトルの抽出
 # retrieve titles for each product
 titles = (
   spark
@@ -79,18 +80,20 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md In order to enable similarity comparisons between titles, we might employ a fairly straightforward word-based comparison where each word is weighted relative to its occurrence in the title and it's overall occurrence across all titles.  These weights are often calculated using *term-frequency - inverse document frequency* (*TF-IDF*) scores.
+# MAGIC %md タイトル間の類似性を比較するためには、非常に簡単な単語ベースの比較を採用することができます。ここでは、各単語がタイトル内での出現率と全タイトルでの出現率に基づいて重み付けされます。 これらの重みは、多くの場合、*term-frequency - inverse document frequency* (*TF-IDF*) スコアを使用して計算されます。
 # MAGIC 
-# MAGIC As a first step in calculating TF-IDF scores, we need to split out the words in our titles and move them to a consistent case.  This is done here using the [RegexTokenizer](https://spark.apache.org/docs/latest/api/python/pyspark.ml.html#pyspark.ml.feature.RegexTokenizer):
+# MAGIC 
+# MAGIC TF-IDF スコアを計算する最初のステップとして、タイトルの中の単語を分割して、一貫したケースに移動させる必要があります。 これは、[RegexTokenizer](https://spark.apache.org/docs/latest/api/python/pyspark.ml.html#pyspark.ml.feature.RegexTokenizer)を使って行います。
+# MAGIC 
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_coasters.jpg' width='150'>
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_tokenization2.png' width='1100'>
 # MAGIC 
-# MAGIC Spark also makes available a simple [Tokenizer](https://spark.apache.org/docs/latest/api/python/pyspark.ml.html#pyspark.ml.feature.Tokenizer) that splits text on white-space but with messy text data (such as is found in our *title* field), the RegexTokenizer allows us to better deal with things like stray punctuation characters:
+# MAGIC Sparkにはホワイトスペースでテキストを分割するシンプルな[Tokenizer](https://spark.apache.org/docs/latest/api/python/pyspark.ml.html#pyspark.ml.feature.Tokenizer)も用意されていますが、今回の*title*フィールドのように複雑なテキストデータの場合は、RegexTokenizerを使うことで、迷子の句読点などをうまく処理することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Words from Titles
+# DBTITLE 1,タイトルから単語を抽出する
 # split titles into words
 tokenizer = RegexTokenizer(
     minTokenLength=2, 
@@ -105,23 +108,23 @@ display(title_words)
 
 # COMMAND ----------
 
-# MAGIC %md With our words split out, we can now consider how to deal with common word variations such as singular vs. plural forms, future, present and past tense verbs, and other word-form variations which may cause very similar words to be seen separately.
+# MAGIC %md 単語が分割されたので、次に、単数形と複数形、未来形、現在形、過去形の動詞などの一般的な単語のバリエーションをどう処理するかを考えます。
 # MAGIC 
-# MAGIC One technique for this is known as [stemming](https://en.wikipedia.org/wiki/Stemming).  With stemming, common word suffixes are dropped in order to truncate a word to its root (stem).  While effective, stemming lacks knowledge about how a word is used and how words with non-standard forms, *i.e. man vs. men*, might be related. Using a slightly more sophisticated technique known as [lemmatization](https://nlp.stanford.edu/IR-book/html/htmledition/stemming-and-lemmatization-1.html) we can better standardize word forms:
+# MAGIC このような場合、[ステミング](https://en.wikipedia.org/wiki/Stemming) という手法があります。 ステム処理では、一般的な単語の接尾辞を削除して、単語をそのルート (ステム) に切り詰めます。 効果的ではありますが、ステミングには、単語がどのように使用されているか、また、非標準的な形 態を持つ単語 (例: man vs. men*) がどのように関連しているかについての知識がありません。レマタイゼーション](https://nlp.stanford.edu/IR-book/html/htmledition/stemming-and-lemmatization-1.html) と呼ばれる少し洗練された技術を使用すると、単語の形をよりよく標準化できます。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_coasters.jpg' width='150'><img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_lemmatization2.png' width='1100'>
 # MAGIC 
 # MAGIC 
 # MAGIC 
-# MAGIC There are a variety of libraries we can use to convert words to *lemmata* (plural of *lemma*).  [NLTK](https://buildmedia.readthedocs.org/media/pdf/nltk/latest/nltk.pdf) is one of the more popular of these and is pre-installed in most Databricks ML runtime environments.  Still, to perform lemmatization with NLTK, we need to install a tagged corpus and part of speech (POS) predictor on each worker node in our cluster.  This is done by configuring our cluster with the init script as explained at the top of this notebook.
+# MAGIC 単語を*lemmata*（*lemma*の複数形）に変換するために使用できるライブラリは様々あります。 [NLTK](https://buildmedia.readthedocs.org/media/pdf/nltk/latest/nltk.pdf)はこれらの中でも特に人気があり、ほとんどのDatabricks MLの実行環境にはあらかじめインストールされています。 しかし、NLTKを使ってレマタイゼーションを行うためには、タグ付きコーパスと品詞予測器をクラスタ内の各ワーカーノードにインストールする必要があります。 これは、このノートブックの冒頭で説明したように、initスクリプトでクラスタを構成することによって行われます。
 # MAGIC 
-# MAGIC Here, we are using the [WordNet corpus](https://www.nltk.org/howto/wordnet.html) to provide context for our words.  We'll use this context to not only standardize words but to eliminate words that are not commonly used as adjectives, nouns, verbs or adverbs, the parts of speech that typically carry the most information.  Alternative *corpora* (plural of *corpus*) may be [downloaded](http://www.nltk.org/howto/corpus.html) with NLTK and may give you different results:
+# MAGIC ここでは、[WordNetコーパス](https://www.nltk.org/howto/wordnet.html)を使用して、単語のコンテキストを提供しています。 この文脈を利用して、単語を標準化するだけでなく、形容詞、名詞、動詞、副詞など、一般的に情報量の多い品詞として使われていない単語を排除します。 代替の*corpora*（*corpus*の複数形）はNLTKで[ダウンロード](http://www.nltk.org/howto/corpus.html)することができますが、異なる結果が得られる可能性があります。
 # MAGIC 
-# MAGIC **NOTE** I'm implementing the lemmatization logic using a pandas UDF with an *iterator of series to iterator of series* type.  This is a [new style of pandas UDF (in Spark 3.0)](https://databricks.com/blog/2020/05/20/new-pandas-udfs-and-python-type-hints-in-the-upcoming-release-of-apache-spark-3-0.html) which is useful in scenarios where expensive initialization takes place.
+# MAGIC **注** 私はpandas UDFを使用して、*iterator of series to iterator of series*タイプのレマタイズロジックを実装しています。 これは[New style of pandas UDF (in Spark 3.0)](https://databricks.com/blog/2020/05/20/new-pandas-udfs-and-python-type-hints-in-the-upcoming-release-of-apache-spark-3-0.html)で、高価な初期化が行われるシナリオでは便利です。
 
 # COMMAND ----------
 
-# DBTITLE 1,Standardize Words
+# DBTITLE 1,単語を標準化させる
 # declare the udf
 @pandas_udf(ArrayType(StringType()))
 def lemmatize_words(iterator: Iterator[pd.Series]) -> Iterator[pd.Series]:
@@ -173,15 +176,15 @@ display(title_lemmata)
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Calculate TF-IDF Scores
+# MAGIC %md # Step 2: TF-IDFスコアを算出する
 # MAGIC 
-# MAGIC With our data prepared, we can now proceed with the calculation of the *term-frequency* portion of our TF-IDF calculation.  Here, we may take a simple count of the occurrence of words within a title.  Because titles are typically succinct, we would expect that most words will occur only once in a given title.  To avoid counting more rare words that will not help us with a similarity comparison, we will limit the number of words we will count to the top 262,144 words across all our titles.  This is the default configuration of the word counters in Spark but we're explicitly assigning this value in the code to make it clear that a limit is in place.
+# MAGIC データの準備ができたら、TF-IDF計算の「単語の頻度」の部分の計算を進めます。 ここでは、タイトル内の単語の出現数を単純に数えてみましょう。 タイトルは一般的に簡潔であるため、ほとんどの単語は1つのタイトルに1回しか現れないことが予想されます。 類似性の比較に役立たないような珍しい単語をカウントしないように、カウントする単語数を全タイトルの上位262,144語に制限します。 これはSparkのワードカウンターのデフォルト設定ですが、制限があることを明確にするためにコードで明示的にこの値を割り当てています。
 # MAGIC 
-# MAGIC To count words, we have two basic options.  The [CountVectorizer](https://spark.apache.org/docs/latest/ml-features.html#countvectorizer) performs the count through a brute-force exercise which works fine for smaller text content.  We will make use of the alternative term-frequency transformer, HashTF, in the next notebook: 
+# MAGIC 単語をカウントするには、2つの基本的なオプションがあります。 [CountVectorizer](https://spark.apache.org/docs/latest/ml-features.html#countvectorizer)はブルートフォース方式でカウントを行いますが、これは小さいテキストコンテンツには有効です。 次のノートでは、代替の用語頻度変換器であるHashTFを使用します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Count Word Occurrences in Titles
+# DBTITLE 1,タイトルの中に単語頻出をカウントする
 # count word occurences
 title_tf = (
   CountVectorizer(
@@ -197,15 +200,15 @@ display(title_tf.select('id','asin','lemmata','tf'))
 
 # COMMAND ----------
 
-# MAGIC %md Now we can calculate the *inverse document frequency* (IDF) for the words in our titles. As a word is used more and more frequently across titles, it's IDF score will decrease logarithmically indicating it carries less and less differentiating information.  The raw IDF scores are typically multiplied against the TF scores to produce the desired TF-IDF score:
+# MAGIC %md ここで、タイトルに含まれる単語の「逆文書頻度」（IDF）を計算します。ある単語がタイトル間で頻繁に使用されるようになると、IDF スコアは対数的に減少し、その単語が持つ差別化情報が少なくなっていきます。 生のIDFスコアは通常、TFスコアと掛け合わされ、目的のTF-IDFスコアが生成されます。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/review_tfidf.png" width="400">
 # MAGIC 
-# MAGIC All of is tackled through the [IDF transform](https://spark.apache.org/docs/latest/ml-features.html#tf-idf):
+# MAGIC これらはすべて[IDFトランスフォーム](https://spark.apache.org/docs/latest/ml-features.html#tf-idf)で対応しています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate TF-IDF Scores
+# DBTITLE 1,TF-IDFスコアを算出
 # calculate tf-idf scores
 title_tfidf = (
   IDF(inputCol='tf', outputCol='tfidf')
@@ -219,11 +222,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md The TF-IDF scores returned by the transform are not normalized.  With similarity calculations based on the distance calculations, we frequently apply an L2-normalization.  This is addressed by applying the [Normalizer](https://spark.apache.org/docs/latest/ml-features.html#normalizer) transform to our TF-IDF scores:
+# MAGIC %md 変換によって返されるTF-IDFスコアは正規化されていません。 距離計算に基づく類似性計算では、頻繁にL2正規化を適用します。 これは、TF-IDFスコアに[Normalizer](https://spark.apache.org/docs/latest/ml-features.html#normalizer)変換を適用することで対処されます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Normalize the TF-IDF Values
+# DBTITLE 1,TF-IDF値を正規化する
 # apply normalizer
 title_tfidf_norm = (
   Normalizer(inputCol='tfidf', outputCol='tfidf_norm', p=2.0)
@@ -234,15 +237,15 @@ display(title_tfidf_norm.select('id','asin','lemmata','tfidf','tfidf_norm'))
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Identify Products with Similar Titles
+# MAGIC %md # Step 3: 似たようなタイトルの商品を探す
 # MAGIC 
-# MAGIC We now have features with which we can calculate similarities between titles. The brute-force approach would have us compare each of our 11.8 million titles to one another, resulting in about 70-trillion comparisons.  This is not economically viable, even in a distributed system.  Instead, we'll need to find a short cut that allows us to limit our comparisons to those products most likely to be similar to one another.
+# MAGIC タイトル間の類似性を計算できる機能ができました。ブルートフォース（総当り）方式では、1,180万本のタイトルをそれぞれ比較し、約70兆回の比較を行うことになります。 これでは、たとえ分散型のシステムであっても、経済的に成り立ちません。 その代わりに、比較対象を類似している可能性の高い製品に限定するための近道を見つける必要があります。
 # MAGIC 
-# MAGIC In the collaborative-filtering notebooks, we examined [Local Sensitive Hashing](https://spark.apache.org/docs/latest/ml-features.html#locality-sensitive-hashing) as one approach to tackling this problem.  (For a deeper dive on LSH, please refer to those notebooks.) We can apply that same technique here to find similar titles:
+# MAGIC コラボレーション・フィルタリング・ノートでは、この問題に取り組むための1つのアプローチとして、[Local Sensitive Hashing](https://spark.apache.org/docs/latest/ml-features.html#locality-sensitive-hashing)を検討した。 (その手法を応用して、似たようなタイトルを探すことができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply LSH to Titles
+# DBTITLE 1,LSHをタイトルに適用する
 # configure lsh
 bucket_length = 0.0001
 lsh_tables = 5
@@ -269,11 +272,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Using LSH, we've been able to sort titles into buckets of *approximately* similar values very quickly.  The technique is not perfect, but as we can see with a sample product, we can locate similar products reasonably well:
+# MAGIC %md LSHを使うことで、タイトルをほぼ同じ値のバケツに素早く分類することができました。 この技術は完璧ではありませんが、サンプルの製品を見ればわかるように、類似した製品を合理的に見つけることができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Extract Information for Sample Product
+# DBTITLE 1,サンプル製品の抽出情報
 # retrieve data for example product
 sample_product = hashed_vectors.filter('asin==\'B01G6M7CLK\'') 
                                        
@@ -283,7 +286,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve 100 Most Similar Products 
+# DBTITLE 1,100種類の類似製品を検索 
 number_of_titles = 100
 
 # retrieve n nearest customers 
@@ -304,11 +307,11 @@ display(similar_k_titles)
 
 # COMMAND ----------
 
-# MAGIC %md From a quick review of the data, we can see we're finding quite a few items with similar titles.  We might examine the breadth of products within the category within which our sample product resides to get a better sense of how complete our approach is, but no matter what, there's a degree of subjectivity in our evaluation that is difficult for us to avoid. This is a very common challenge in exploring recommendations where there is no baseline truth against which to compare (such as a product rating or a purchase event).  All we can do here is play with settings to arrive at what appears to be a reasonably good set of recommendations and then perform a limited test with real customers to see how they respond to our suggestions.
+# MAGIC %md データを見てみると、似たようなタイトルの商品がかなりあることがわかります。私たちのアプローチがどの程度完全なものかを知るために、サンプル製品が属するカテゴリー内の製品の幅を調べるかもしれませんが、いずれにしても、私たちの評価には避けがたい主観性が存在しています。これは、製品の評価や購入履歴など、比較すべき基準となる真実がないレコメンデーションを検討する際に、非常によく見られる課題です。ここでできることは、設定を変更して適度に良いと思われるレコメンデーションのセットにたどり着き、実際のお客様で限定的なテストを行い、私たちの提案に対するお客様の反応を確認することです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop Cached Datasets
+# DBTITLE 1,キャッシュの削除
 def list_cached_dataframes():
     return [(k,v) for (k,v) in [(k,v) for (k, v) in globals().items() if isinstance(v, DataFrame)] if v.is_cached]
   
