@@ -12,7 +12,7 @@
 # MAGIC 
 # MAGIC (クラスタ範囲の)Init Scriptを実行するには実行する処理(シェルスクリプト)をファイルにして、DBFS(もしくはクラスタから参照できるストレージ, S3やAzure Blog Storageなど)に配置する必要があります。ここでは、DBFS上にスクリプトを配置します。
 # MAGIC 
-# MAGIC DBFSへのファイルのアップロードは`Databricks CLI`を使う必要があり、やや準びが必要になるので、シンプルにdatabricksのnotebook上でスクリプトファイルを作成し、それをDBFS上にコピーする方法をとります。
+# MAGIC DBFSへのファイルのアップロードは`Databricks CLI`を使う必要があり、やや準備が必要になるので、シンプルにdatabricksのnotebook上でスクリプトファイルを作成し、それをDBFS上にコピーする方法をとります。
 
 # COMMAND ----------
 
