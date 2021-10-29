@@ -1,15 +1,15 @@
 # Databricks notebook source
-# MAGIC %md # Introduction 
+# MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC The purpose of this notebook is to examine techniques which may be applied to the various product metadata fields in order to calculate the similarities that will form the basis of our recommendations. Focused on category hierarchy data, this serves to as a continuation of feature extraction work performed across the last two notebooks. Rarely would recommendations based on this kind of data be used on its own but instead in combination with other product recommenders to adjust scores where the need is to constrain recommendations around the product hierarchy:
+# MAGIC このノートブックの目的は、様々な製品メタデータフィールドに適用できる技術を検討し、推奨事項の基礎となる類似性を計算することです。カテゴリー階層データに焦点を当て、過去2回のノートブックで行った特徴抽出作業を継続して行います。この種のデータに基づく推薦は、単独で使用されることはほとんどありませんが、代わりに他の製品レコメンダーと組み合わせてスコアを調整し、製品階層に合わせて推薦を制限する必要があります。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_recommendations.png" width="600">
 # MAGIC 
-# MAGIC This notebook should be run on a **Databricks ML 7.3+ cluster**.
+# MAGIC このノートブックは **Databricks ML 7.3+ クラスタ** で実行する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 import pandas as pd
 
 from pyspark.sql.types import *
@@ -29,19 +29,19 @@ import shutil
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Retrieve & Prepare Category Data
+# MAGIC %md # Step 1: Categoryデータの準備
 # MAGIC 
-# MAGIC In an ideal scenario, our product hierarchy would be organized in a consistent manner such that every entry rolled up to a shared root node.  Such a structure, known as a tree, would allow us to calculate product similarities based on the position of products within the tree structure.  [Thabet Slimani](https://arxiv.org/ftp/arxiv/papers/1310/1310.8059.pdf) provides an **excellent** review of various similarity metrics that could be used with trees.
+# MAGIC 理想的なシナリオでは、製品階層が一貫した方法で整理され、すべてのエントリが共有のルートノードにロールアップされます。 このような構造はツリーと呼ばれ、ツリー構造内の製品の位置に基づいて製品の類似性を計算することができます。 [Thabet Slimani](https://arxiv.org/ftp/arxiv/papers/1310/1310.8059.pdf)は、ツリーで使用可能な様々な類似性メトリクスについて**優れた**レビューを提供しています。
 # MAGIC 
-# MAGIC Unfortunately, the product category captured in this dataset does not form a tree.  Instead, we find inconsistencies where a child category might be positioned under a parent category with one product with their positions reversed in another or where a child category might leap over a parent to roll directly into a shared ancestor.  The problems with the category hierarchy in this dataset are not easily corrected so that we cannot treat this data as a tree.  That said, we can still apply a little creativity to assess similarity.
+# MAGIC 残念ながら、このデータセットに含まれる製品カテゴリーはツリーを形成していない。 それどころか、ある製品では子カテゴリーが親カテゴリーの下に位置していても、別の製品ではその位置が逆になっていたり、子カテゴリーが親を飛び越えて共通の祖先に直接転がり込んでいたりする矛盾が見られます。 このデータセットのカテゴリー階層の問題は簡単には修正できないため、このデータをツリーとして扱うことはできません。 とはいえ、類似性を評価するためにちょっとした工夫をすることはできます。
 # MAGIC 
-# MAGIC **NOTE** If this describes a dataset that your organization manages, investing in a master data management solution may help you move the data into a more workable structure over time.
+# MAGIC **注** もし、あなたの組織が管理しているデータセットがこれに当てはまるなら、マスターデータ管理ソリューションに投資することで、時間をかけてデータをより実用的な構造に移すことができるかもしれません。
 # MAGIC 
-# MAGIC To get us started with our category data, let's first retrieve a few values and examine its structure:
+# MAGIC カテゴリーデータを使い始めるために、まずいくつかの値を取得し、その構造を調べてみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Category Data
+# DBTITLE 1,Categoryデータの抽出
 # retrieve descriptions for each product
 categories = (
   spark
@@ -61,9 +61,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md The category data is organized as an array where the array index indicates the level in the hierarchy.  Appending ancestry information to each level's name allows us to uniquely identify each level within the overall structure so that categories with a common name but residing under different parents or other ancestors may be distinguishable from one another. We'll tackle this using a pandas UDF:
+# MAGIC %md カテゴリーデータは配列で構成されており，配列のインデックスは階層のレベルを示しています． 各レベルの名前に祖先の情報を付加することで、全体の構造の中で各レベルを一意に識別することができ、共通の名前を持つが異なる親や他の祖先の下に存在するカテゴリを互いに区別できるようになります。ここでは、pandas UDF を使用してこの作業を行います。
 # MAGIC 
-# MAGIC **NOTE** We are finding many levels where the level name is more like a product or feature description.  We're not sure if this is valid data or represents a misparsing of data from the source website.  We'll limit the category hierarchy to 10 levels max and break the hierarchy should we encounter a level name with more than 100 characters to avoid this data.  These are arbitrary settings that you may want to adjust or discard for your dataset.
+# MAGIC **注** レベル名が製品や機能の説明のようになっているレベルが多く見受けられます。 これが有効なデータなのか、ソースウェブサイトからのデータの誤認識なのかはわかりません。 このようなデータを避けるために、カテゴリーの階層を最大10レベルに制限し、100文字以上のレベル名がある場合は階層を解除することにします。 これらは任意の設定であり、あなたのデータセットに合わせて調整したり、破棄したりすることができます。
 
 # COMMAND ----------
 
@@ -99,13 +99,13 @@ display(categories)
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Calculate Category Similarities
+# MAGIC %md # Step 2: Category類似性を算出
 # MAGIC 
-# MAGIC With our level names adjusted, let's one-hot encode the category levels for each product.  We'll use the CountVectorizer used with our TF-IDF calculations to tackle this, setting it's *binary* argument to *True* so that all output is either 0 or 1 (which it should be anyway).  As before, this transform will limit the entries to some top number of frequently occurring values.  We might adjust this from its default based on our knowledge of the product categories but for now we'll leave it as-is:
+# MAGIC レベル名が調整されたので、各製品のカテゴリーレベルをワンショットでエンコードしてみましょう。 この作業には、TF-IDF計算で使用したCountVectorizerを使用し、*binary*引数を*True*に設定して、すべての出力が0または1のいずれかになるようにします（いずれにしてもそうなるはずです）。 前述のように、この変換は、エントリーを、頻繁に発生する値の上位数に制限します。 製品カテゴリーに関する知識に基づいて、デフォルトから調整するかもしれませんが、今はこのままにしておきます。
 
 # COMMAND ----------
 
-# DBTITLE 1,One-Hot Encode the Categories
+# DBTITLE 1,CategoriesをOne-Hot Encodeする
 categories_encoded = (
   HashingTF(
     inputCol='category_clean', 
@@ -123,7 +123,7 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md As before, we need to divide our records into buckets.  Because of how we have assembled our categories, we know that if two items don't have the same top-level category, they should not have any other feature overlap. So, let's group our products into buckets based on the first member of the categories array and see where that leads us:
+# MAGIC %md  先ほどと同様に、レコードをバケットに分ける必要があります。 カテゴリの組み立て方から、2つのアイテムのトップレベルのカテゴリが同じでなければ、他の機能も重複しないことがわかっています。そこで、categories 配列の最初のメンバーに基づいて、製品をバケットにグループ化し、その結果を見てみましょう。
 
 # COMMAND ----------
 
@@ -147,17 +147,17 @@ display(roots.orderBy('members'))
 
 # COMMAND ----------
 
-# MAGIC %md Approaching the problem this way does give use some skewed results but this seems reasonably manageable without further transformation.
+# MAGIC %md この方法で問題に取り組むと、多少の歪んだ結果が得られますが、これはさらなる変換を行わなくても十分に対処可能です。
 # MAGIC 
-# MAGIC Now we can perform a simple calculation for similarity.  Unlike our other features where similarity was measured in terms of distance (or angle), these features can be compared using a simple [Jaccard similarity](https://en.wikipedia.org/wiki/Jaccard_index) score where we divide the number of overlapping levels by the distinct number of levels between two products:
+# MAGIC ここで、類似性に関する簡単な計算を行います。 類似性を距離（または角度）で測定した他の特徴とは異なり、これらの特徴は単純な[Jaccard類似性](https://en.wikipedia.org/wiki/Jaccard_index)スコアを使用して比較することができます。このスコアでは、重複するレベルの数を2つの製品間の異なるレベルの数で割ります。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_jaccard_similarity2.png" width="250">
 # MAGIC 
-# MAGIC As before, we'll perform this work using a Scala function which we will register with Spark SQL so that we might make use of it against our DataFrame defined in Python:
+# MAGIC 前述のように、この作業はScalaの関数を使って行います。この関数をSpark SQLに登録し、Pythonで定義したDataFrameに対して利用できるようにします。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Function for Jaccard Similarity Calculation
+# DBTITLE 1,Jaccard Similarityを算出する関数を定義する
 # MAGIC %scala
 # MAGIC 
 # MAGIC import math._
@@ -176,9 +176,9 @@ display(roots.orderBy('members'))
 
 # COMMAND ----------
 
-# MAGIC %md Let's return to our sample product to see how this is working:
+# MAGIC %md サンプル製品に戻って、これがどのように機能するか見てみましょう。
 # MAGIC 
-# MAGIC **NOTE** We are using the same sample product as was used in the prior notebooks.
+# MAGIC **注意** ここでは、以前のノートブックで使用したのと同じサンプル製品を使用しています。
 
 # COMMAND ----------
 
@@ -188,7 +188,7 @@ display(sample_product)
 
 # COMMAND ----------
 
-# DBTITLE 1,Find Similar Products
+# DBTITLE 1,類似プロダクトを見つける
 display(
   categories_clustered
     .withColumnRenamed('category_onehot', 'features_b')
@@ -201,7 +201,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop Cached Datasets
+# DBTITLE 1,キャッシュの削除
 def list_cached_dataframes():
     return [(k,v) for (k,v) in [(k,v) for (k, v) in globals().items() if isinstance(v, DataFrame)] if v.is_cached]
   
@@ -210,8 +210,8 @@ for name, obj in list_cached_dataframes():
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Combine Similarity Scores to Build Recommendations
+# MAGIC %md # Step 3: 類似性スコアを組み合わせてレコメンデーションを構築する
 # MAGIC 
-# MAGIC At this point we have the ability to compare products for similarity based on their titles, descriptions and category assignment.  Individually, each feature set could be used to make a recommendation but we might find that combining information derived from multiple elements gives us results better aligned with our goals.  For example, we might find that title-based recommendations are a little to *literal* while description-based recommendations are a little too *vague* but together they might give us the right balance to make compelling recommendations or that using one or both of these feature sets to calculate similarities can be combined with a category similarity metric as shown here to prefer product recommendations from within the same or related parts of the category hierarchy.
+# MAGIC この時点では、タイトル、説明文、カテゴリの割り当てに基づいて、製品の類似性を比較する機能があります。 それぞれの機能を個別に使用してレコメンデーションを行うこともできますが、複数の要素から得られる情報を組み合わせることで、より目的に沿った結果を得ることができるかもしれません。 例えば、タイトルに基づいた推薦は文字数が多く、説明文に基づいた推薦は漠然としていますが、これらを組み合わせることで、説得力のある推薦を行うための適切なバランスが得られるかもしれません。また、これらの機能セットの一方または両方を使用して類似性を計算することで、ここに示すように、カテゴリの類似性メトリックと組み合わせることができ、カテゴリ階層の同じ部分または関連する部分から製品を推薦することができます。
 # MAGIC 
-# MAGIC In each of these scenarios we have to consider how best to combine our similarity metrics. One simple choice is to simply multiply each similarity score against each other to form a simple combined score. Another might be to weight each similarity score and then add the weighted values to each other. With a little creativity, we could come up with still more approaches to using similarity scores generated by multiple recommenders to arrive at a unified set of recommendations.  The point in considering how might combine these inputs is not to specify one way to proceed but instead to highlight that depending on your goals, any number of approaches may be reasonable.
+# MAGIC これらのシナリオでは、類似性測定基準をどのように組み合わせるのがベストかを検討する必要があります。一つの単純な方法は、それぞれの類似性スコアを単純に掛け合わせて、単純な複合スコアを形成することです。また、それぞれの類似性スコアに重み付けをして、その重み付けされた値を互いに加算するという方法もあります。複数のレコメンダーが生成した類似性スコアを使って統一的なレコメンデーションを行う方法は、工夫次第でもっと多くのアプローチが考えられます。 これらの入力をどのように組み合わせるかを考えるポイントは、1つの方法を指定することではなく、目的に応じて、いくつかのアプローチが妥当であることを強調することです。
