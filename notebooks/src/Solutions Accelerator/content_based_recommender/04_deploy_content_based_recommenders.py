@@ -1,25 +1,25 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to explore how the content-based recommenders developed in previous notebooks might be operationalized. This notebook should be run on a **Databricks ML 7.3+ cluster**.
+# MAGIC %md このノートブックの目的は、以前のノートブックで開発されたコンテンツベースのレコメンダーがどのように運用されるかを探ることです。このノートブックは **Databricks ML 7.3+ クラスタ** で実行する必要があります。
 
 # COMMAND ----------
 
-# MAGIC %md # Introduction
+# MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC No recommendation solution should be constructed with out careful consideration of the data volumes, the frequency of data changes, the service level expectations for the recommendations and the business goals the recommendations are intended to drive. That said, we might anticipate some design choices used by many recommenders and build a demonstration deployment archtiecture to serve as a starting point for these considerations:
+# MAGIC データ量、データ変更の頻度、レコメンデーションに期待されるサービスレベル、レコメンデーションが推進すべきビジネス目標などを慎重に検討した上で、レコメンデーションソリューションを構築する必要があります。とはいえ、多くのレコメンダーが使用している設計上の選択肢を想定し、これらを検討するための出発点となるデモンストレーション用の展開アーキテクチャを構築することも可能です。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_feature_pipelines5.png" width="700">
 # MAGIC 
-# MAGIC To enable this particular architecture, we'll need to bring together the feature engineering logic demonstrated in previous notebooks as a manageable unit we might refer to as a pipeline.  Raw information will flow into the pipeline and transformed features will flow out.  We'll implement three pipelines for each of the feature sets related to titles, descriptions and categories, again, as shown in prior notebooks. We will keep the feature output from each of these pipelines stored in separate tables as such a pattern will make it easier for us to schedule and roll out changes to the pipelines separately. Similarly, we'll need to construct a pipeline for our user-profiles.  It's important that we recognize that this pipeline will consume both user feedback (in the form of ratings) as well as features derived through our other pipelines. 
+# MAGIC このアーキテクチャを実現するためには、これまでのノートで紹介してきたフィーチャーエンジニアリングのロジックを、パイプラインと呼ばれる管理可能な単位にまとめる必要があります。 パイプラインには生の情報が流入し、変換された機能が流出します。 ここでは、前回のノートで示したように、タイトル、説明、カテゴリーに関連する機能セットのそれぞれについて、3つのパイプラインを実装します。それぞれのパイプラインから出力されたフィーチャーは、別々のテーブルに格納されます。このようなパターンを採用することで、パイプラインに対する変更を別々にスケジュールしたり、展開したりすることが容易になります。同様に、ユーザープロファイル用のパイプラインも構築する必要があります。 ここで重要なのは、このパイプラインが、ユーザーからのフィードバック（評価という形で）と、他のパイプラインで得られた機能の両方を利用するということです。
 # MAGIC 
-# MAGIC Feature generation is the first challenge to be addressed by our recommender solution. The next challenge is the generation of the recommendations themselves.  One approach is to pre-compute the *related products* recommendations for some or all of our products. Another might be to dynamically generate these recommendations and then cache them for reuse. Here, we'll focus on the pre-computation pattern.
+# MAGIC フィーチャーの生成は、レコメンデーションソリューションが取り組むべき最初の課題です。次の課題は、レコメンデーション自体の生成です。 1つのアプローチは、製品の一部または全部について、「関連製品」のレコメンデーションをあらかじめ計算しておくことです。また、これらのレコメンデーションを動的に生成し、キャッシュして再利用する方法もあります。ここでは、事前計算のパターンに注目します。
 
 # COMMAND ----------
 
-# MAGIC %md **NOTE** This cluster used to run this notebook should be created using a [cluster-scoped initialization script](https://docs.databricks.com/clusters/init-scripts.html?_ga=2.158476346.1681231596.1602511918-995336416.1592410145#cluster-scoped-init-script-locations) which installs the NLTK WordNet corpus and Averaged Perceptron Tagger.  The following cell can be used to generate such a script but you must associate it with the cluster before running any code that depends upon it:
+# MAGIC %md **NOTE** このノートブックを実行するためのクラスターは、NLTK WordNetコーパスとAveraged Perceptron Taggerをインストールする[cluster-scoped initialization script](https://docs.databricks.com/clusters/init-scripts.html?_ga=2.158476346.1681231596.1602511918-995336416.1592410145#cluster-scoped-init-script-locations)を使用して作成する必要があります。 以下のセルを使用してこのようなスクリプトを生成することができますが、スクリプトに依存するコードを実行する前に、このスクリプトをクラスターに関連付ける必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Cluster Init Script
+# DBTITLE 1,Cluster Init Scriptの生成
 dbutils.fs.mkdirs('dbfs:/databricks/scripts/')
 
 dbutils.fs.put(
@@ -38,7 +38,7 @@ print(
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 from pyspark import keyword_only
 from pyspark.ml.util import DefaultParamsReadable, DefaultParamsWritable  
 from pyspark.ml import Transformer, Pipeline
@@ -66,22 +66,22 @@ import os
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Assemble Product Feature Pipelines
+# MAGIC %md # Step 1: 製品機能パイプラインの構築
 # MAGIC 
-# MAGIC Our content recommender uses three feature sets derived from the *title*, *description* & *category* fields in our product metadata. Each of these feature sets is created through a series of various transformations which must be applied in a specific sequence. To preserve information about these transformations, we can organize them into pipelines which we can then fit and persist for re-use between cycles. The first of these that we will build is the pipeline for our title transformations.
+# MAGIC 当社のコンテンツ・レコメンダーは、製品メタデータの*title*、*description*、*category*フィールドから得られる3つの特徴セットを使用しています。これらの特徴セットはそれぞれ、特定の順序で適用されなければならない一連の様々な変換によって作成されます。これらの変換に関する情報を保持するために、それらをパイプラインに整理し、サイクル間で再利用できるようにフィットさせて保存することができます。最初に構築するのは、タイトル変換のパイプラインです。
 # MAGIC 
-# MAGIC The basic transformation steps we will perform against our title data are as follows:</p>
-# MAGIC 1. Tokenize the title to produce a bag of words
-# MAGIC 2. Lemmatize the bag of words
-# MAGIC 3. Calculate token frequency
-# MAGIC 4. Calculate TF-IDF scores
-# MAGIC 5. Normalize the TF-IDF scores
+# MAGIC タイトル データに対して実行する基本的な変換手順は次のとおりです。
+# MAGIC 1. タイトルをトークン化して単語のバッグを生成する。
+# MAGIC 2. 単語の袋をレンマタイズする
+# MAGIC 3. トークンの頻度を計算する
+# MAGIC 4. TF-IDFスコアの算出
+# MAGIC 5. TF-IDFスコアの正規化
 # MAGIC 
-# MAGIC All but one of these steps is addressed through out-of-the-box transformers.  For the lemmatization step, we'll need to write a custom transformer.  The steps for this are nicely presented in [this post](https://stackoverflow.com/questions/32331848/create-a-custom-transformer-in-pyspark-ml) and implemented in this next cell.  Notice that the *_transform* method of the custom transformer class is a copy-and-paste of the UDF  created in prior notebooks:
+# MAGIC これらのステップのうち、1つを除いたすべてのステップは、すぐに使えるトランスフォーマーで対応できます。 レマタイズのステップでは、カスタムトランスフォーマーを書く必要があります。 その手順は、[this post](https://stackoverflow.com/questions/32331848/create-a-custom-transformer-in-pyspark-ml)にうまく紹介されており、次のセルで実装されています。 カスタムトランスフォーマークラスの*_transform*メソッドは、以前のノートブックで作成したUDFをコピー＆ペーストしたものであることに注意してください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Custom Transform for Lemmatization
+# DBTITLE 1,Lemmatizationのためのカスタムトランスフォームの定義
 class NLTKWordNetLemmatizer(
   Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable
   ):
@@ -152,11 +152,11 @@ class NLTKWordNetLemmatizer(
 
 # COMMAND ----------
 
-# MAGIC %md With our custom transformer in place, we can now construct our titles pipeline:
+# MAGIC %md カスタムトランスフォーマーが完成したので、次はタイトルパイプラインを構築してみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Assemble Titles Pipeline
+# DBTITLE 1,タイトルパイプラインの組み立て
 # step 1: tokenize the title
 title_tokenizer = RegexTokenizer(
   minTokenLength=2, 
@@ -211,7 +211,7 @@ title_pipeline = Pipeline(stages=[
 
 # COMMAND ----------
 
-# MAGIC %md We can now fit the pipeline and perform a transformation just to verify it works as expected.  Please note that fitting the pipeline is the only step actually required before persisting the pipeline in later cells:
+# MAGIC %md これで、パイプラインを適合させ、変換を実行して、期待通りに動作することを確認できます。 パイプラインの適合は、後のセルでパイプラインを永続化する前に実際に必要な唯一のステップであることに注意してください。
 
 # COMMAND ----------
 
@@ -235,13 +235,13 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Let's now turn our attention to pipeline persistence.  To persist the fitted pipeline, we'll make use of the [mlflow registry](https://mlflow.org/docs/1.4.0/model-registry.html):
+# MAGIC %md 次に、パイプラインの永続化に目を向けてみましょう。 フィットしたパイプラインを永続化するために、[mlflow registry](https://mlflow.org/docs/1.4.0/model-registry.html)を利用します。
 # MAGIC 
-# MAGIC **NOTE** The mlflow registry is designed to enable an MLOps workflow where models are tested and moved between stages over time.  If you immediately attempt to retrieve the pipeline after it is logged, you may receive an error. If you are troubleshooting persistence and retrieval, be sure to give the registry a few seconds between steps to ensure the pipeline object is properly available, otherwise, you might receive an error that the object cannot be found.
+# MAGIC **注意** mlflow registryは、モデルがテストされ、時間の経過とともにステージ間を移動するMLOpsのワークフローを実現するために設計されています。 ロギング後すぐにパイプラインを取得しようとすると、エラーが発生する場合があります。永続化と取得のトラブルシューティングを行っている場合は、パイプラインオブジェクトが適切に利用できるように、ステップ間でレジストリに数秒の時間を与えるようにしてください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Fitted Titles Pipeline
+# DBTITLE 1,フィットしたタイトルのパイプラインを持続させる
 # persist pipeline
 with mlflow.start_run():
   mlflow.spark.log_model(
@@ -252,17 +252,17 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# MAGIC %md Now we can create a pipeline for our description data.  We'll use the Word2Vec functionality explored in prior notebooks.  Our pipeline will consist of the following steps:</p>
+# MAGIC %md ここで、記述データのパイプラインを作成します。 ここでは、以前のノートブックで検討した Word2Vec の機能を使用します。 パイプラインは、以下のステップで構成されます:</p>
 # MAGIC 
-# MAGIC 1. Flatten description from array to string
-# MAGIC 2. Tokenize the description
-# MAGIC 2. Apply Word2Vec transformation
-# MAGIC 3. Normalize Word2Vec scores
-# MAGIC 4. Calculate KMeans clusters
+# MAGIC 1. 説明文を配列から文字列に変換
+# MAGIC 2. 説明をトークン化する
+# MAGIC 2. Word2Vec変換の適用
+# MAGIC 3. Word2Vecスコアの正規化
+# MAGIC 4. KMeansクラスターの計算
 # MAGIC 
-# MAGIC As there are no custom transformers required with this pipeline, but we will need to introduce a [SQL transformer](https://spark.apache.org/docs/latest/ml-features#sqltransformer) to handle our first step which was previously addressed in a query:
+# MAGIC このパイプラインでは、カスタムトランスフォーマーは必要ありませんが、以前にクエリで対処した最初のステップを処理するために、[SQLトランスフォーマー](https://spark.apache.org/docs/latest/ml-features#sqltransformer)を導入する必要があります。
 # MAGIC 
-# MAGIC **NOTE** We are limiting the words considered in Word2Vec to the first 200 per information discussed in the prior, related notebook. Also, it's important to point out that the SQL transformer has access to all incoming fields in the dataset but will only pass along those specified in its SELECT-list.
+# MAGIC **注** Word2Vecで考慮する単語は、事前の関連ノートブックで議論された情報ごとに、最初の200語に制限しています。また、SQLトランスフォーマーはデータセットのすべての入力フィールドにアクセスできますが、SELECTリストで指定されたものだけを渡すことを指摘しておきます。
 
 # COMMAND ----------
 
@@ -352,17 +352,19 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# MAGIC %md And now we tackle the categories pipeline.  This pipeline will perform the following steps:</p>
+# MAGIC %md そして、今度はカテゴリーのパイプラインに取り組みます。 このパイプラインでは、以下のステップを実行します。
 # MAGIC 
-# MAGIC 1. Alter category levels to include lineage
-# MAGIC 2. Perform one-hot encoding of category levels
-# MAGIC 3. Identify the root member
+# MAGIC ----
 # MAGIC 
-# MAGIC The first of these steps is handled through a custom transformer. The last of these steps is handled through a SQL transformer:
+# MAGIC 1. リネージを含むようにカテゴリー レベルを変更する
+# MAGIC 2. カテゴリ レベルのワンショット エンコーディングを実行する
+# MAGIC 3. ルート・メンバーを特定する
+# MAGIC 
+# MAGIC これらのステップの最初の部分は、カスタム・トランスフォーマーによって処理されます。これらのステップの最後は、SQL トランスフォーマーによって処理されます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Custom Transformer
+# DBTITLE 1,カスタムトランスフォーマーの定義
 # define custom transformer to flatten the category names to include lineage
 class CategoryFlattener(
   Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable
@@ -476,17 +478,17 @@ with mlflow.start_run():
 
 # MAGIC %md # Step 2: Generate Product Features
 # MAGIC 
-# MAGIC With our pipelines defined, trained & persisted, we can now focus attention on generating the features from which we will build our recommendations.  When we roll out a new pipeline, we'll need to initialize our features tables with the new information.  Once this is done, we will need to rerun our pipeline as new products are added to our metadata table or product metadata changes.
+# MAGIC パイプラインが定義され、トレーニングされ、永続化されたことで、今度はレコメンデーションを構築するためのフィーチャーの生成に集中できるようになりました。 新しいパイプラインを導入する際には、新しい情報を使って機能テーブルを初期化する必要があります。 この初期化を行った後は、メタデータテーブルに新製品が追加されたり、製品のメタデータが変更されたりした場合に、パイプラインを再実行する必要があります。
 # MAGIC 
-# MAGIC Ideally, we'll have in our product metadata table a *modified date time* value with which we can reliably detect these changes.  We don't have such a field in our metadata table so we can't implement this logic.  That said, we will show how the tables for each feature set can be initialized and updated for those who have the ability to perform change detection.
+# MAGIC 理想的には、製品のメタデータテーブルに、これらの変更を確実に検出できる「変更された日付と時刻」の値があればいいのですが、そのようなフィールドはありません。 しかし、私たちのメタデータ・テーブルにはそのようなフィールドがないため、このロジックを実装することはできません。 とはいえ、変更検出を行う能力を持つ人のために、各機能セットのテーブルをどのように初期化し、更新するかを紹介します。
 
 # COMMAND ----------
 
-# MAGIC %md The first step in executing our pipelines is to retrieve the pipeline objects from mlflow.  Earlier, we saved our pipeline objects to the mlflow registry.  The registry will allow us to move pipeline objects through *Staging*, *Production* and *Archived* stages and simplify the retrieval of the current *Production* version of the pipeline object for this process.  That said, we did not move our pipelines programmatically into a *Production* stage (as this would typically be performed through a separate process involving formal evaluation), and for that reason, we'll grab the last version of each pipeline currently residing in the *None* stage. (Again, this is **not** how this would typically be done in a production scenario.)
+# MAGIC %md パイプラインを実行する最初のステップは、mlflow からパイプライン・オブジェクトを取得することです。 先ほど、パイプラインオブジェクトを mlflow のレジストリに保存しました。 このレジストリを利用することで、パイプラインオブジェクトを*Staging*、*Production*、*Archived*の各ステージに移動させることができ、このプロセスのためにパイプラインオブジェクトの現在の*Production*バージョンを取得することが簡単になります。 つまり、パイプラインをプログラム的に*Production*ステージに移動させておらず（これは通常、正式な評価を伴う別のプロセスで実行されるため）、そのために、現在*None*ステージに存在する各パイプラインの最後のバージョンを取得しています。(繰り返しになりますが、これは本番シナリオでは通常行われない方法です。)
 # MAGIC 
-# MAGIC Let's see how this works for our titles pipeline:
+# MAGIC ここでは、タイトルのパイプラインを例に説明します。
 # MAGIC 
-# MAGIC **NOTE** This next cell will generate an error.
+# MAGIC **注** この次のセルはエラーを生成します。
 
 # COMMAND ----------
 
@@ -498,14 +500,14 @@ retrieved_title_pipeline = mlflow.spark.load_model(
 
 # COMMAND ----------
 
-# MAGIC %md There is a large verbose warning that is generated which can be ignored.  What we want to focus our attention on is the **AttributeError** that states that the class for our custom transformer cannot be found, *i.e.* *module '__main__' has no attribute 'NLTKWordNetLemmatizer'*.  The inability of the pipeline to find the class definition (even though it resides in this same notebook) is sometimes referred to as the [*leaky pipeline* problem](https://rebeccabilbro.github.io/module-main-has-no-attribute/) and its commonly encountered with *sklearn* which Spark ML closely emulates.
+# MAGIC %md 大きな冗長警告が生成されますが、これは無視して構いません。 ここで注目したいのは、カスタムトランスフォーマーのクラスが見つからないという**AttributeError**です。つまり、*module '__main__' has no attribute 'NLTKWordNetLemmatizer'*ということです。 パイプラインがクラス定義を見つけられないことは、[*leaky pipeline* problem](https://rebeccabilbro.github.io/module-main-has-no-attribute/)と呼ばれることがあり、Spark MLがエミュレートしている*sklearn*でよく見られる問題です。
 # MAGIC 
-# MAGIC To overcome this problem, we have two options: </p>
+# MAGIC この問題を解決するには2つの方法があります。</p>
 # MAGIC 
-# MAGIC 1. Include the class definition with any code that retrieves the pipeline object and force the top-level environment to recognize it OR
-# MAGIC 2. Create a *whl* file which we can attach to the cluster
+# MAGIC 1. パイプラインオブジェクトを取得するすべてのコードにクラス定義を含め、トップレベル環境に認識させる。
+# MAGIC 2. クラスタに添付できる *whl* ファイルを作成する。
 # MAGIC 
-# MAGIC The creation of a *whl* file is covered [here](https://packaging.python.org/guides/distributing-packages-using-setuptools/) (and [here](https://medium.com/swlh/beginners-guide-to-create-python-wheel-7d45f8350a94)) and the techniques for attaching such a file to a Databricks cluster are addressed [here](https://docs.databricks.com/libraries/index.html). This is the more elegant solution but one which requires capabilities which are not easily demonstrated within the confines of a notebook. For that reason, we'll solve the problem with the inelegant first solution:
+# MAGIC whl*ファイルの作成については[こちら](https://packaging.python.org/guides/distributing-packages-using-setuptools/)（および[こちら](https://medium.com/swlh/beginners-guide-to-create-python-wheel-7d45f8350a94)）、そのファイルをDatabricksクラスタにアタッチするためのテクニックについては[こちら](https://docs.databricks.com/libraries/index.html)を参照してください。これは、よりエレガントな解決策ですが、ノートブックの範囲内では簡単に実演できない能力を必要とします。そのため、ここでは不完全な最初の解決策で問題を解決します。
 
 # COMMAND ----------
 
@@ -548,7 +550,7 @@ retrieved_category_pipeline = mlflow.spark.load_model(
 
 # COMMAND ----------
 
-# MAGIC %md Now, let's generate features for our products.  To get started, we will create an empty dataframe with a schema as would be expected to be created by our pipeline. We will append this to our target destination in order to *lay down* a DeltaLake table with a schema that will allow us to perform a merge operation later.  We have to do this instead of using a *CREATE TABLE IF NOT EXISTS* statement because the vector user-defined type is not recognized in such a statement.  Creating the DeltaLake table in this manner ensures that we have a target schema for the merge but that we do not modify any data if such a schema is already in place:
+# MAGIC %md それでは、製品の機能を生成してみましょう。 まず始めに、パイプラインで作成されることを想定したスキーマを持つ空のデータフレームを作成します。これを対象となるデスティネーションに追加して、後でマージ操作を実行できるようなスキーマを持つDeltaLakeテーブルを*lay down*します。 CREATE TABLE IF NOT EXISTS*ステートメントを使用する代わりに、このようにしなければなりません。 このようにしてDeltaLakeテーブルを作成することで、マージの対象となるスキーマを確保することができますが、そのようなスキーマが既に存在している場合には、データを変更することはありません。
 
 # COMMAND ----------
 
@@ -579,7 +581,7 @@ title_dummy_features
 
 # COMMAND ----------
 
-# MAGIC %md Now we can move our real data updates into the schema.  Notice where we would have applied some change detection logic in determining which titles to process as part of this pipeline effort:
+# MAGIC %md これで、実データの更新をスキーマに移すことができます。 このパイプライン作業の一環として、どのタイトルを処理するかを決定するために、変更検出ロジックを適用したことに注目してください。
 
 # COMMAND ----------
 
