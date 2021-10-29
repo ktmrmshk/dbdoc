@@ -222,3 +222,62 @@ ORDER BY AVG(delay) desc
 -- MAGIC spark.sql('''
 -- MAGIC   DROP TABLE flight_record_py
 -- MAGIC ''')
+
+-- COMMAND ----------
+
+-- MAGIC %md # (補足) Storageをマウントして使う
+-- MAGIC 
+-- MAGIC ----
+-- MAGIC 
+-- MAGIC * パスを短くできる。
+-- MAGIC * Sparkを使わないコード(pandasなど)からblob storage上のオブジェクトを参照できるようになる。
+
+-- COMMAND ----------
+
+-- DBTITLE 1,マウントする
+-- MAGIC %python
+-- MAGIC 
+-- MAGIC # ストレージアカウント、コンテナ、アクセスキーの設定
+-- MAGIC storage_account = 'your_ADLS_storage_account'
+-- MAGIC storage_container = 'your_ADLS_storage_container'
+-- MAGIC access_key = 'Your-ADLS-Container-Access-Key'
+-- MAGIC mount_point = '/mnt/<mount-name>'
+-- MAGIC 
+-- MAGIC dbutils.fs.mount(
+-- MAGIC   source = f'wasbs://{storage_container}@{storage_account}.blob.core.windows.net/',
+-- MAGIC   mount_point = mount_point,
+-- MAGIC   extra_configs = {
+-- MAGIC     f'fs.azure.account.key.{storage_account}.blob.core.windows.net': access_key
+-- MAGIC   }
+-- MAGIC )
+
+-- COMMAND ----------
+
+-- DBTITLE 1,ファイルのList
+-- MAGIC %python
+-- MAGIC display(
+-- MAGIC   dbutils.fs.ls( mount_point )
+-- MAGIC )
+
+-- COMMAND ----------
+
+-- DBTITLE 1,ファイルのアクセス
+-- MAGIC %python
+-- MAGIC # sparkコード内から参照         => dbfs:/mnt/<mount-name>/foo/bar.csv
+-- MAGIC # spark以外(pandasなど)から参照 => /dbfs/mnt/<mount-name>/foo/bar.csv
+-- MAGIC 
+-- MAGIC # Spark DataFrame
+-- MAGIC s_df = spark.read.format('csv').option('Header', True).load('dbfs:/databricks-datasets/Rdatasets/data-001/csv/ggplot2/diamonds.csv')
+-- MAGIC display(s_df)
+-- MAGIC 
+-- MAGIC # Pandas DataFrame
+-- MAGIC import pandas as pd
+-- MAGIC p_df = pd.read_csv('/dbfs/databricks-datasets/Rdatasets/data-001/csv/ggplot2/diamonds.csv', header=0)
+-- MAGIC p_df
+
+-- COMMAND ----------
+
+-- DBTITLE 1,マウントを解除する(unmount)
+-- MAGIC %python
+-- MAGIC 
+-- MAGIC dbutils.fs.unmount( mount_point ) 
