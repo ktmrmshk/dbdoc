@@ -1,9 +1,9 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to train, evaluate & deploy a wide & deep collaborative filter recommender using features engineered in the prior notebook.  This notebook should be run on a **Databricks 8.1+ ML cluster**. 
+# MAGIC %md このノートブックの目的は、前のノートブックで設計された機能を使って、ワイドでディープな協調フィルタレコメンダーを訓練、評価、導入することです。 このノートブックは **Databricks 8.1+ ML cluster** で実行する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 import pyspark.sql.functions as f
 from pyspark.sql.types import *
 
@@ -29,13 +29,13 @@ import requests
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 1: Prepare the Data
+# MAGIC %md ## Step 1: データの準備
 # MAGIC 
-# MAGIC In our last notebook, both user and product features were prepared along with labels indicating whether a specific user-product combination was purchased in our training period.  Here, we will retrieve those data, combining them for input into our model:
+# MAGIC 前回のノートでは、ユーザーと商品の両方の特徴量と、特定のユーザーと商品の組み合わせが学習期間中に購入されたかどうかを示すラベルが用意されていました。 ここでは、これらのデータを取得し、組み合わせてモデルに入力します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Features & Labels
+# DBTITLE 1,特徴量とラベルを取得する
 # retrieve features and labels
 product_features = spark.table('instacart.product_features')
 user_features = spark.table('instacart.user_features')
@@ -53,11 +53,11 @@ display(labeled_features)
 
 # COMMAND ----------
 
-# MAGIC %md Because of the large number of features, we'll need to capture some metadata on our fields.  This metadata will help us setup our data inputs in later steps:
+# MAGIC %md 多数の特徴量があるため、フィールドのメタデータを取得する必要があります。 このメタデータは、後のステップでデータ入力を設定するのに役立ちます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Capture Label & Feature Info
+# DBTITLE 1,特徴量とラベルを取り込む
 # identify label column
 label_col = 'label'
 
@@ -82,11 +82,11 @@ num_features = labeled_features.drop(*(['id',label_col]+cat_features)).columns
 
 # COMMAND ----------
 
-# MAGIC %md Now we can split our data into training, validation & testing sets.  We pre-split this here versus dynamically splitting so that we might perform a stratified sample on the label.  The stratified sample will help ensure the under-represented positive class (indicating a specific product was purchased in the training period) is consistently present in our data splits:
+# MAGIC %md ここで、データをトレーニングセット、検証セット、テストセットに分割します。 ここでは、動的に分割するのではなく、事前に分割することで、ラベルの層別サンプルを実行することができます。 層化サンプルを使用することで、データを分割した際に、存在感の薄いポジティブクラス（トレーニング期間中に特定の製品を購入したことを示す）が一貫して存在するようになります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Evaluate Positive Class Representation
+# DBTITLE 1,ポジティブなクラスの表現を評価する
 instance_count = labeled_features.count()
 positive_count = labels.filter(f.expr('label=1')).count()
 
@@ -94,7 +94,7 @@ print('{0:.2f}% positive class across {1} instances'.format(100 * positive_count
 
 # COMMAND ----------
 
-# DBTITLE 1,Split Data into Training, Validation & Testing
+# DBTITLE 1,データをトレーニング、バリデーション、テストに分割
 # fraction to hold for training
 train_fraction = 0.6
 
@@ -119,13 +119,13 @@ test = (
 
 # COMMAND ----------
 
-# MAGIC %md The training, validation & testing datasets currently exist as Spark Dataframes and may be quite large.  Converting our data to a pandas Dataframe may result in an out of memory error, so instead, we'll convert our Spark Dataframe into a [Petastorm](https://petastorm.readthedocs.io/en/latest/) dataset. Petastorm is a library that caches Spark data to Parquet and provides high-speed, batched access to that data to libraries such as Tensorflow and PyTorch:
+# MAGIC %md トレーニング、検証、テストのデータセットは現在Spark Dataframeとして存在しており、かなりの大きさになる可能性があります。 データをpandas Dataframeに変換するとout of memoryエラーが発生する可能性があるため、代わりにSpark Dataframeを[Petastorm](https://petastorm.readthedocs.io/en/latest/)データセットに変換します。PetastormはSparkのデータをParquetにキャッシュし、TensorflowやPyTorchなどのライブラリにそのデータへの高速なバッチアクセスを提供するライブラリです。
 # MAGIC 
-# MAGIC **NOTE** Petastorm may complain that a given cached file is too small.  Use the repartition() method to adjust the number of cached files generated with each dataset, but play with the count to determine the best number of files for your scenario.
+# MAGIC **注意** Petastormは、キャッシュされたファイルが小さすぎると訴えることがあります。 repartition()メソッドを使用して、各データセットで生成されるキャッシュファイルの数を調整しますが、シナリオに応じて最適なファイル数を決定するために数を調整してください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Cache Data for Faster Access
+# DBTITLE 1,データをキャッシュしてアクセスを高速化
 # configure temp cache for petastorm files
 spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF, 'file:///dbfs/tmp/instacart/pstorm_cache') # the file:// prefix is required by petastorm
 
@@ -136,11 +136,11 @@ test_pstorm = make_spark_converter(test.repartition(4))
 
 # COMMAND ----------
 
-# MAGIC %md To make the data in the Petastorm cache accessible, we will need to define specs that read the data and transform it into the format expected by Tensorflow.  This format requires features to be presented as a dictionary and the label to be presented as a scalar value:
+# MAGIC %md Petastormキャッシュのデータにアクセスできるようにするためには、データを読み込んでTensorflowが期待するフォーマットに変換するスペックを定義する必要がある。 このフォーマットでは、特徴が辞書として提示され、ラベルがスカラー値として提示される必要がある。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Data Specs
+# DBTITLE 1,データスペックの定義
 def get_data_specs(epochs=1, batch_size=128):
   
   # define functions to transform data into req'ed format
@@ -175,11 +175,11 @@ def get_data_specs(epochs=1, batch_size=128):
 
 # COMMAND ----------
 
-# MAGIC %md We can verify our specs by retrieving a row as follows.  Note that the default batch size for the training (first) spec is 128 records:
+# MAGIC %md 以下のように行を取得することで、仕様を確認することができます。 なお、training（最初の）specのデフォルトのバッチサイズは128レコードです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Verify Spec
+# DBTITLE 1,Specを確認する
 # retrieve specs
 specs = get_data_specs()
 
@@ -192,17 +192,17 @@ next(
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 2: Define the Model
+# MAGIC %md ## Step 2: モデルを定義する
 # MAGIC 
-# MAGIC With our data in place, we can now define the wide & deep model.  For this, we will make use of [Tensorflow's DNNLinearCombinedClassifier estimator](https://www.tensorflow.org/api_docs/python/tf/estimator/DNNLinearCombinedClassifier) which simplifies the definition of these kinds of models.
+# MAGIC データが揃ったところで、ワイド＆ディープモデルを定義します。 このために、これらの種類のモデルの定義を簡略化する[Tensorflow's DNNLinearCombinedClassifier estimator](https://www.tensorflow.org/api_docs/python/tf/estimator/DNNLinearCombinedClassifier)を利用します。
 # MAGIC 
-# MAGIC The feature inputs for the DNNLinearCombinedClassifier estimator are divided into those associated with a *wide*, linear model and those associated with a *deep* neural network.  The inputs to the wide model are the user and product ID combinations.  In this way, the linear model is being trained to memorize which products are purchased by which users.  These features may be brought into the model as simple categorical features [identified through an ordinal value](https://www.tensorflow.org/api_docs/python/tf/feature_column/categorical_column_with_identity) or [hashed into a smaller number of buckets](https://www.tensorflow.org/api_docs/python/tf/feature_column/categorical_column_with_hash_bucket).  The inclusion of a user-product [crossed hash](https://www.tensorflow.org/api_docs/python/tf/feature_column/crossed_column) allows the model to better understand user-product combinations:
+# MAGIC DNNLinearCombinedClassifier estimatorの特徴入力は、*ワイド*な線形モデルに関連するものと、*ディープ*なニューラルネットワークに関連するものに分けられる。 ワイドモデルへの入力は、ユーザーIDと製品IDの組み合わせです。 このようにして、線形モデルは、どのユーザーがどの製品を購入したかを記憶するように訓練されます。 これらの特徴は、単純なカテゴリー特徴[順序値によって識別される](https://www.tensorflow.org/api_docs/python/tf/feature_column/categorical_column_with_identity)、または[より少ない数のバケットにハッシュ化される](https://www.tensorflow.org/api_docs/python/tf/feature_column/categorical_column_with_hash_bucket)としてモデルに導入することができます。 ユーザー製品の[クロスハッシュ](https://www.tensorflow.org/api_docs/python/tf/feature_column/crossed_column)を含めることで、モデルはユーザーと製品の組み合わせをよりよく理解することができます。
 # MAGIC 
-# MAGIC **NOTE** Much of the logic that follows is encapsulated in functions.  This will make distributed processing occurring later in the notebook easier to implement and is fairly standard for most Tensorflow implementations.
+# MAGIC **注** 後続のロジックの多くは、関数でカプセル化されています。 これにより、ノートブックの後半で発生する分散処理を簡単に実装することができ、ほとんどのTensorflowの実装ではかなり標準的なものです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Wide Features
+# DBTITLE 1,Wide Featuresを定義する
 def get_wide_features():
 
   wide_columns = []
@@ -245,11 +245,11 @@ def get_wide_features():
 
 # COMMAND ----------
 
-# MAGIC %md The feature inputs for the deep (neural network) component of the model are the features that describe our users and products in more generalized ways. By avoiding specific user and product IDs, the deep model is trained to learn attributes that signal preferences between users and products. For the categorical features, an [embedding](https://www.tensorflow.org/api_docs/python/tf/feature_column/embedding_column) is used to succintly capture the feature data.  The number of dimensions in the embedding is based on guidance in [this tutorial](https://tensorflow2.readthedocs.io/en/stable/tensorflow/g3doc/tutorials/wide_and_deep/):
+# MAGIC %md モデルのディープ（ニューラルネットワーク）コンポーネントの特徴入力は、ユーザーや製品をより一般的な方法で表現する特徴です。特定のユーザーや製品のIDを避けることで、ディープモデルはユーザーや製品間の好みを示す属性を学習します。カテゴリカルな特徴については、[embedding](https://www.tensorflow.org/api_docs/python/tf/feature_column/embedding_column)を使用して、特徴データを簡潔に捉えます。 エンベッディングの次元数は、[this tutorial](https://tensorflow2.readthedocs.io/en/stable/tensorflow/g3doc/tutorials/wide_and_deep/)のガイダンスに基づいています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Deep Features
+# DBTITLE 1,Deep Featuresを定義する
 def get_deep_features():
   
   deep_columns = []
@@ -280,13 +280,13 @@ def get_deep_features():
 
 # COMMAND ----------
 
-# MAGIC %md With our features defined, we can now assemble the estimator:
+# MAGIC %md 機能が定義されたので、推定器を組み立てることができます。
 # MAGIC 
-# MAGIC **NOTE** The optimizers are passed as classes to address an issue identified [here](https://stackoverflow.com/questions/58108945/cannot-do-incremental-training-with-dnnregressor).
+# MAGIC **NOTE** オプティマイザーは、[こちら](https://stackoverflow.com/questions/58108945/cannot-do-incremental-training-with-dnnregressor)で指摘された問題に対処するため、クラスとして渡されます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Assemble Model
+# DBTITLE 1,モデルの構築
 def get_model(hidden_layers, hidden_layer_nodes_initial_count, hidden_layer_nodes_count_decline_rate, dropout_rate):  
   
   # determine hidden_units structure
@@ -313,17 +313,17 @@ def get_model(hidden_layers, hidden_layer_nodes_initial_count, hidden_layer_node
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 3: Tune the Model
+# MAGIC %md ## Step 3: モデルのチューニング
 # MAGIC 
-# MAGIC To tune the model, we need to define an evaluation metric.  By default, the DNNLinearCombinedClassifier seeks to minimize the [softmax (categorical) cross entropy](https://www.tensorflow.org/api_docs/python/tf/nn/softmax_cross_entropy_with_logits) metric which examines the distance between a predicted class probability and the actual class label.  (You can think of this metric as seeking more accurate and confident class predictions.)
+# MAGIC モデルをチューニングするためには，評価指標を定義する必要があります． デフォルトでは、DNNLinearCombinedClassifierは、[softmax (categorical) cross entropy](https://www.tensorflow.org/api_docs/python/tf/nn/softmax_cross_entropy_with_logits)メトリックを最小化するようにしています。このメトリックは、予測されたクラス確率と実際のクラスラベルの間の距離を調べます。 (このメトリックは、より正確で自信のあるクラス予測を求めるものと考えることができます。)
 # MAGIC 
-# MAGIC We'll tune our model around this metric but it might be nice to provide a more traditional metric to assist us with evaluation of the end result.  For recommenders where the goal is to present products in order from most likely to least likely to be selected, [mean average precision @ k (MAP@K)](https://web.stanford.edu/class/cs276/handouts/EvaluationNew-handout-6-per.pdf) is often used.  This metric examines the average precision associated with a top-*k* number of recommendations.  The closer the value of MAP@K to 1.0, the better aligned those recommendations are with a customer's product selections. 
+# MAGIC この指標に基づいてモデルをチューニングしますが、最終結果の評価を助けるために、より伝統的な指標を提供するのも良いかもしれません。 製品を選択される可能性が高いものから低いものの順に提示することを目的としたレコメンダーでは、[mean average precision @ k (MAP@K)](https://web.stanford.edu/class/cs276/handouts/EvaluationNew-handout-6-per.pdf)がよく使われます。 この指標は、上位*k*個のレコメンデーションに関連する平均精度を調べるものです。 MAP@Kの値が1.0に近ければ近いほど、それらのレコメンデーションが顧客の製品選択とよりよく一致していることを意味します。
 # MAGIC 
-# MAGIC To calculate MAP@K, we are [repurposing code presented by NVIDIA](https://github.com/NVIDIA/DeepLearningExamples/blob/master/TensorFlow/Recommendation/WideAndDeep/utils/metrics.py) with their implementation of a wide and deep recommender for ad-placement:
+# MAGIC MAP@Kを計算するために、私たちは[NVIDIAが提供するコードを再利用](https://github.com/NVIDIA/DeepLearningExamples/blob/master/TensorFlow/Recommendation/WideAndDeep/utils/metrics.py)しており、広告配置のための広くて深いレコメンデーションの実装を行っています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define MAP@K Metric
+# DBTITLE 1,MAP@K Metricの定義
 # Adapted from: https://github.com/NVIDIA/DeepLearningExamples/blob/master/TensorFlow/Recommendation/WideAndDeep/utils/metrics.py
 def map_custom_metric(features, labels, predictions):
   
@@ -364,11 +364,11 @@ def map_custom_metric(features, labels, predictions):
 
 # COMMAND ----------
 
-# MAGIC %md We can now bring together all of our logic to define our model:
+# MAGIC %md これで、すべてのロジックをまとめてモデルを定義することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Training & Evaluation Logic
+# DBTITLE 1,トレーニングと評価のロジックの定義
 def train_and_evaluate_model(hparams):
   
   # retrieve the basic model
@@ -393,11 +393,11 @@ def train_and_evaluate_model(hparams):
 
 # COMMAND ----------
 
-# MAGIC %md We can now give our model a test run, just to make sure all the moving parts are working together:
+# MAGIC %md ここで、モデルを試運転して、すべての可動部が機能しているかどうかを確認します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Perform Test Run
+# DBTITLE 1,テストランの実行
 hparams = {
   'hidden_layers':2,
   'hidden_layer_nodes_initial_count':100,
@@ -411,13 +411,13 @@ train_and_evaluate_model(hparams)
 
 # COMMAND ----------
 
-# MAGIC %md With a successful test run completed, let's now perform hyperparameter tuning on the model. We will use [hyperopt](https://docs.databricks.com/applications/machine-learning/automl-hyperparam-tuning/index.html#hyperparameter-tuning-with-hyperopt) to ensure this work is distributed in a manner that allows us to manage the total time required for this operation.
+# MAGIC %md テストランが成功したので、今度はモデルのハイパーパラメータチューニングを行ってみましょう。[hyperopt](https://docs.databricks.com/applications/machine-learning/automl-hyperparam-tuning/index.html#hyperparameter-tuning-with-hyperopt)を使って、この作業に必要な総時間を管理できるように分散させます。
 # MAGIC 
-# MAGIC Regarding the hyperparameters, we will play with the number of hidden units as well as the drop-out rate for the deep neural-network portion of the model.  While we will have the option to tune the number of epochs and the batch size for training, we will leave those set to fixed values at this time:
+# MAGIC ハイパーパラメータについては、隠れユニットの数と、モデルのディープニューラルネットワーク部分のドロップアウト率を調整します。 また、学習のエポック数やバッチサイズを調整することもできますが、今回は固定値にしています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Hyperparameter Search Space
+# DBTITLE 1,ハイパーパラメータ探索空間の定義
 search_space = {
   'hidden_layers': hp.quniform('hidden_layers', 1, 5, 1)  # determines number of hidden layers
   ,'hidden_layer_nodes_initial_count': hp.quniform('hidden_layer_nodes_initial', 50, 201, 10)  # determines number of nodes in first hidden layer
@@ -429,7 +429,7 @@ search_space = {
 
 # COMMAND ----------
 
-# DBTITLE 1,Perform Hyperparameter Search
+# DBTITLE 1,ハイパーパラメータ探索の実行
 argmin = fmin(
   fn=train_and_evaluate_model,
   space=search_space,
@@ -440,18 +440,18 @@ argmin = fmin(
 
 # COMMAND ----------
 
-# DBTITLE 1,Show Optimized Hyperparameters
+# DBTITLE 1,最適化されたハイパーパラメータの表示
 space_eval(search_space, argmin)
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 4: Evaluate the Model
+# MAGIC %md ## Step 4: モデルの評価
 # MAGIC 
-# MAGIC Based on our optimized parameters, we can now train a final version of our model and explore the metrics associated with it:
+# MAGIC 最適化されたパラメータに基づいて、モデルの最終バージョンをトレーニングし、それに関連するメトリクスを調べることができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Train Optimized Model
+# DBTITLE 1,最適化されたトレーニングモデル
 hparams = space_eval(search_space, argmin)
 
 model = get_model(
@@ -468,16 +468,16 @@ results = tf.estimator.train_and_evaluate(model, train_spec, eval_spec)
 
 # COMMAND ----------
 
-# DBTITLE 1,Review Validation Results
+# DBTITLE 1,バリデーション結果の確認
 results[0]
 
 # COMMAND ----------
 
-# MAGIC %md Using our test data, which the model did not see during hyperparameter tuning, we can better assess model performance.  Our test data, also stored in Petastorm, requires access to a function to re-organize it for evaluation.  In addition, we need to explicitly define the number of data steps over which the data should be evaluated (or the evaluation step will run indefinitely): 
+# MAGIC %md ハイパーパラメータのチューニング時にモデルが見ていないテストデータを使用することで、モデルの性能をよりよく評価することができます。 テストデータもPetastormに保存されていますが、評価のためにデータを再編成するための関数にアクセスする必要があります。 さらに、データを評価するデータステップ数を明示的に定義する必要があります（さもなければ、評価ステップは無限に実行されます）。
 
 # COMMAND ----------
 
-# DBTITLE 1,Evaluate Using Test Data
+# DBTITLE 1,テストデータで評価する
 # Borrowed from get_data_specs() (defined above)
 # ---------------------------------------------------------
 # define functions to transform data into req'ed format
@@ -507,23 +507,23 @@ results = model.evaluate(get_input_fn(test_ds), steps=steps)
 
 # COMMAND ----------
 
-# DBTITLE 1,Review Test Results
+# DBTITLE 1,テスト結果の確認
 # show results
 results
 
 # COMMAND ----------
 
-# MAGIC %md Our model appears to produce similar results for the testing holdout.  We should feel confident moving it into the application infrastructure for live testing.
+# MAGIC %md 今回開発したモデルは、テスト用のホールドアウトでも同じような結果が得られるようです。 このモデルを本番テスト用のアプリケーション・インフラに移行することに自信を持つべきでしょう。
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 5: Deploy the Model
+# MAGIC %md ## Step 5: モデルのデプロイ
 # MAGIC 
-# MAGIC With our model trained and evaluated, we now need to move it into our application infrastructure.  To do this, we will need to persist the model in a manner that enables deployment. For this, we'll make use of MLflow, but before we can do that, we'll need to persist the model using Tensorflow's built-in functionality. This will make it easier for MLflow to pickup the pickled model later on:
+# MAGIC トレーニングを受けて評価されたモデルを、アプリケーション・インフラストラクチャに移行する必要があります。 これを行うには、デプロイを可能にする方法でモデルを永続化する必要があります。このためにはMLflowを利用するが、その前にTensorflowの組み込み機能を使ってモデルを永続化する必要があるだろう。これにより、後でMLflowがピクルス化されたモデルをピックアップするのが容易になります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Temporarily Export Tensorflow Model
+# DBTITLE 1,Tensorflowモデルの一時的なエクスポート
 # get features
 wide_features = get_wide_features()
 deep_features = get_deep_features()
@@ -546,11 +546,11 @@ saved_model_path = model.export_saved_model(
 
 # COMMAND ----------
 
-# MAGIC %md The Tensorflow model expects data in a particular format and will return a number of values with each prediction.  We'll provide MLflow a custom wrapper for the which will pickup the pickled Tensorflow model, convert incoming data into a format understood by that model and return positive class probabilities with each prediction:
+# MAGIC %md Tensorflowモデルは、特定の形式のデータを期待し、各予測でいくつかの値を返します。 このラッパーは、ピクルス化されたTensorflowモデルをピックアップし、入力データをそのモデルが理解できるフォーマットに変換し、各予測で正のクラス確率を返す。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Wrapper for Model
+# DBTITLE 1,モデルのラッパーの定義
 # custom wrapper to align model with mlflow
 class Recommender(mlflow.pyfunc.PythonModel):
   
@@ -596,11 +596,11 @@ class Recommender(mlflow.pyfunc.PythonModel):
 
 # COMMAND ----------
 
-# MAGIC %md Our model will expect a large number of features to be passed to it.  To help clarify the data structure requirements, we'll create a [sample dataset to persist with the model](https://www.mlflow.org/docs/latest/models.html#input-example):
+# MAGIC %md 私たちのモデルは、大量の機能が渡されることを想定しています。 データ構造の要件を明確にするために、[モデルと一緒に永続化するサンプルデータセット](https://www.mlflow.org/docs/latest/models.html#input-example)を作成します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Construct Sample Input Dataset
+# DBTITLE 1,サンプル入力データセットの構築
 # use user 123 as sample user
 user_id = spark.createDataFrame([(123,)], ['user_id'])
 
@@ -616,16 +616,16 @@ sample_pd
 
 # COMMAND ----------
 
-# MAGIC %md Now we can finally persist our model to MLflow. We'll register the model using a recognizable name (to help us with a later step) and include information about the library dependencies for this model:
+# MAGIC %md これでようやく、モデルをMLflowに永続化することができます。後のステップで役立つように、わかりやすい名前を使ってモデルを登録し、このモデルのライブラリの依存関係についての情報を含めます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Identify Model Name
+# DBTITLE 1,モデル名のID
 model_name='recommender'
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Models to mlflow
+# DBTITLE 1,mlflowでモデルを永続化させる
 # libraries for these models
 conda_env = {
     'channels': ['defaults'],
@@ -686,11 +686,11 @@ with mlflow.start_run(run_name=model_name) as run:
 
 # COMMAND ----------
 
-# MAGIC %md Towards the end of the steps in the last cell, we register the model with the MLflow registry.  The [MLflow registry](https://www.mlflow.org/docs/latest/model-registry.html) provides support for the promotion of models from an initial state to staging to production and then to archival. Organizations may build a workflow to enable models to be evaluated before being designated as the current production instance. For our purposes, we'll push our just published model directly to production without testing and coordination with dependent systems, understanding this is not recommended practice outside of a demonstration:
+# MAGIC %md 最後のセルのステップの最後に、MLflow registryにモデルを登録します。 [MLflow registry](https://www.mlflow.org/docs/latest/model-registry.html)は、モデルを初期状態からステージング、プロダクション、そしてアーカイブへと昇格させるためのサポートを提供します。組織は、モデルを評価してから現在の本番インスタンスとして指定できるようなワークフローを構築することができます。ここでは、公開したばかりのモデルを、テストや依存するシステムとの調整を行わずに、本番環境に直接プッシュすることにしますが、これはデモ以外では推奨できません。
 
 # COMMAND ----------
 
-# DBTITLE 1,Promote Model to Production Status
+# DBTITLE 1,Promote ModelをProduction Statusにプッシュする
 client = mlflow.tracking.MlflowClient()
 
 # archive any production versions of the model from prior runs
@@ -714,21 +714,21 @@ client.transition_model_version_stage(
 
 # COMMAND ----------
 
-# MAGIC %md We now have a model in the MLflow registry that can be employed to score user-product combinations.  We can envision a scenario where an application page might present a subset of products associated with a search term or category selection, send features for those products along with user features to the model, and receive scores which could then be used to order the products on the page. 
+# MAGIC %md MLflowのレジストリには、ユーザーと製品の組み合わせをスコアリングするためのモデルが用意されています。 アプリケーションのページが、検索語やカテゴリの選択に関連した製品のサブセットを提示し、それらの製品の特徴とユーザーの特徴をモデルに送信し、ページ上の製品を注文するために使用されるスコアを受け取る、というシナリオが考えられます。
 # MAGIC 
-# MAGIC In this scenario, the serving of the model may be done through a microservice hosted in [Azure ML](https://www.mlflow.org/docs/latest/python_api/mlflow.azureml.html), [AWS Sagemaker](https://www.mlflow.org/docs/latest/python_api/mlflow.sagemaker.html) or even Databricks itself through its [Model Serving](https://docs.databricks.com/applications/mlflow/model-serving.html) capabilities. Many other variations on deployment may be possible given that essentially MLflow is deploying the model to a [Docker image](https://www.mlflow.org/docs/latest/cli.html#mlflow-models-build-docker) and exposing it via a pre-defined REST endpoint.  Given this, technologies such as [Kubernetes](https://www.mlflow.org/docs/latest/projects.html#run-an-mlflow-project-on-kubernetes-experimental) come into the picture as viable deployment paths.
+# MAGIC このシナリオでは、モデルの提供は、[Azure ML](https://www.mlflow.org/docs/latest/python_api/mlflow.azureml.html)、[AWS Sagemaker](https://www.mlflow.org/docs/latest/python_api/mlflow.sagemaker.html)、または[Model Serving](https://docs.databricks.com/applications/mlflow/model-serving.html)機能を備えたDatabricks自身にホストされたマイクロサービスを通じて行われるかもしれません。基本的にMLflowはモデルを[Docker image](https://www.mlflow.org/docs/latest/cli.html#mlflow-models-build-docker)にデプロイし、あらかじめ定義されたRESTエンドポイントで公開しているため、他にも様々なデプロイ方法が考えられます。 そう考えると、[Kubernetes](https://www.mlflow.org/docs/latest/projects.html#run-an-mlflow-project-on-kubernetes-experimental)のような技術が、実行可能なデプロイメントパスとして浮かび上がってきます。
 # MAGIC 
-# MAGIC To get a sense of how this might work, we'll make use of Databricks Model Serving.  To access the Serving UI, switch into the Databricks UI's Machine Learning interface by clicking the drop-down in the upper left-hand corner of your screen. By clicking on the Models icon  <img src='https://brysmiwasb.blob.core.windows.net/demos/images/widedeep_models_icon.PNG' width=50>  in the left-hand side of the Databricks UI, we can locate the model registered in the previous steps.  Clicking on that model, we are presented two tabs: Details & Serving.  Clicking the Serving tab, we can select the <img src='https://brysmiwasb.blob.core.windows.net/demos/images/widedeep_enableserving_button.PNG'> button to launch a small, single-node cluster to host the model.
+# MAGIC ここでは、DatabricksのModel Servingを利用してみましょう。 Serving UIにアクセスするには、画面左上のドロップダウンをクリックして、Databricks UIのMachine Learningインターフェースに切り替えます。Databricks UIの左側にあるModelsアイコン<img src='https://brysmiwasb.blob.core.windows.net/demos/images/widedeep_models_icon.PNG' width=50>をクリックすると、先ほどの手順で登録したモデルを見つけることができます。 そのモデルをクリックすると、2つのタブが表示されます。Details」と「Serving」です。 Serving」タブをクリックすると、「<img src='https://brysmiwasb.blob.core.windows.net/demos/images/widedeep_enableserving_button.PNG'>」ボタンを選択して、モデルをホストする小さなシングルノードのクラスタを起動することができます。
 # MAGIC 
-# MAGIC Once clicked, select the production version of the model you wish to call.  Note the Model URL presented with the selected model version.  You may then submit data to the REST API associated with this model using the code below.
+# MAGIC このボタンをクリックすると、呼び出したいモデルの製品版を選択することができます。 選択したモデルのバージョンに応じて、モデルのURLが表示されることに注意してください。 次に、以下のコードを使用して、このモデルに関連するREST APIにデータを送信することができます。
 # MAGIC 
-# MAGIC Please note that the single-node cluster running this model must transition from the **Pending** to the **Running** state before requests will be accepted.  Also, this cluster will run indefinitely unless you actively return to the Serving tab and select **Stop** next to its status.
+# MAGIC このモデルを実行しているシングルノード・クラスターは、リクエストを受け付ける前に**Pending**状態から**Running**状態に移行する必要があることに注意してください。 また、このクラスタは、［Serving］タブに戻り、ステータスの横にある［Stop］を選択しない限り、無期限に実行されます。
 # MAGIC 
-# MAGIC Finally, the REST API presented by Databricks Model Serving is secured using a [Databricks Personal Access Token](https://docs.databricks.com/dev-tools/api/latest/authentication.html). It is a recommended best practice that such tokens are not embedded in code as is done below but we are violating this recommendation for the purposes of transparency:
+# MAGIC 最後に、Databricks Model Servingが提供するREST APIは、[Databricks Personal Access Token](https://docs.databricks.com/dev-tools/api/latest/authentication.html)を使用して保護されています。このようなトークンは、以下のようにコードに埋め込まないことが推奨されるベストプラクティスですが、透明性を確保するためにこの推奨に違反しています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve User-Product Combinations to Score
+# DBTITLE 1,ユーザーと製品の組み合わせを検索してスコアにする
 user_id = 123 # user 123
 aisle_id = 32 # packaged produce department
 
@@ -758,7 +758,7 @@ user_products.head(5)
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Scores
+# DBTITLE 1,スコアの検索
 personal_access_token='dapi27074f9636590d32146f2e3d59afc2aa'
 databricks_instance='adb-2704554918254528.8.azuredatabricks.net' 
 model_name = 'recommender'
