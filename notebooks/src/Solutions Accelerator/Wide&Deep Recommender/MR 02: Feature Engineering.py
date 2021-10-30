@@ -1,32 +1,32 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to engineer the features we will use to build a wide and deep collaborative filter recommender.  This notebook should be run on a **Databricks 8.1+ ML cluster**. 
+# MAGIC %md このノートブックの目的は、ワイドでディープな協調フィルタレコメンダーを構築するために使用する機能をエンジニアリングすることです。 このノートブックは **Databricks 8.1+ ML cluster** で実行する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 from pyspark.sql import functions as f
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 1: Calculate Base Metrics
+# MAGIC %md ## Step 1: 基準メトリックの計算
 # MAGIC 
-# MAGIC Model-based collaborative filters use user and product features to predict a future purchase or interaction.  The [wide-and-deep model](https://arxiv.org/abs/1606.07792) does this recognizing that a customer's future purchases are likely to be a result of prior user-product interactions as well as general patterns surrounding user-product preferences. In this regard, it balances a specific user's preference for particular products with more generalized preferences that would influence the purchase of new, *i.e.* previously unpurchased, items.  
+# MAGIC モデルベースの協調フィルタは、ユーザーと製品の特徴を利用して、将来の購入や交流を予測します。 [wide-and-deep model](https://arxiv.org/abs/1606.07792)は、顧客の将来の購入は、以前のユーザーと製品の相互作用や、ユーザーと製品の好みを取り巻く一般的なパターンの結果である可能性が高いと認識しています。これにより、特定の製品に対する特定のユーザーの好みと、新しい、つまり以前に購入されていない製品の購入に影響を与えるような、より一般的な好みとのバランスを取っています。 
 # MAGIC 
-# MAGIC For the wide-part of the model, the features are straightforward: we make use of the user and the product IDs to *memorize* preferences.  For the deep-part of the model, we need a variety of features that describe the user and the products to enable *generalization*.  These features are derived from metrics extracted from our historical data, labeled here as the *prior* evaluation set:
+# MAGIC モデルのワイドパートでは、ユーザーと商品のIDを利用して嗜好を記憶するという簡単な機能を持っています。 ディープパートのモデルでは、一般化を可能にするために、ユーザーと商品を説明する様々な特徴が必要です。 これらの特徴は、過去のデータから抽出されたメトリクスから導き出されますが、ここでは「*prior*評価セット」とラベル付けされています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Prior Orders
+# DBTITLE 1,過去の注文を検索する
 order_details_ = spark.table('instacart.order_details').cache()
 prior_order_details = order_details_.filter(f.expr("eval_set='prior'"))
 
 # COMMAND ----------
 
-# MAGIC %md Many of our deep-features will be calculated based on orders place a fixed number of days prior to the last order placed.  We will arbitrarily set these intervals as 30-days, 180-days and 360-days prior:
+# MAGIC %md 多くの深層機能は、最後の注文から一定の日数前の注文に基づいて計算されます。 この間隔を30日前、180日前、360日前と任意に設定しています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Set Days-Prior Boundaries
+# DBTITLE 1,Days-Prior Boundariesの設定
 prior_days = [30, 180, 360]
 
 # COMMAND ----------
@@ -35,7 +35,7 @@ prior_days = [30, 180, 360]
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Global Metrics
+# DBTITLE 1,グローバルメトリクスの算出
 # calculate metrics for the following fields and time intervals
 aggregations = []
 for column in ['order_id', 'user_id', 'product_id', 'department_id', 'aisle_id']:
@@ -58,11 +58,11 @@ display(global_metrics)
 
 # COMMAND ----------
 
-# MAGIC %md We now calculate product-specific metrics:
+# MAGIC %md それでは、プロダクト固有のメトリックの算出をしていきます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Product Metrics
+# DBTITLE 1,プロダクト固有のメトリックの算出
 # calculate metrics for the following fields and time intervals
 aggregations = []
 
@@ -109,11 +109,11 @@ display(product_metrics)
 
 # COMMAND ----------
 
-# MAGIC %md And now we calculate user-specific metrics:
+# MAGIC %md ユーザー固有のメトリックの算出をしていきます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate User Metrics 
+# DBTITLE 1,ユーザー固有のメトリックの算出
 # calculate metrics for the following fields and time intervals
 aggregations = []
 
@@ -149,13 +149,13 @@ display(user_metrics)
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 2: Calculate Features
+# MAGIC %md ## Step 2: 特徴量の計算
 # MAGIC 
-# MAGIC With our metrics calculated, we can now use these to generate product-specific features.  We will persist our product-specific features separately from user-features to enable easier data assembly later:
+# MAGIC メトリクスが算出されたので、これらを使って製品固有の特徴を生成することができます。 製品固有の特徴はユーザー特徴とは別に保存し、後でデータを簡単に組み立てられるようにしておきます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Product-Specific Features
+# DBTITLE 1,プロダクト固有のメトリックの算出
 # calculate product specific features
 product_feature_definitions = []
 for prior_day in prior_days:
@@ -196,11 +196,11 @@ display(spark.table('instacart.product_features'))
 
 # COMMAND ----------
 
-# MAGIC %md Similarly, we can calculate user-specific features and persist these for later use:
+# MAGIC %md 同様に、ユーザー固有の特徴量を計算し、後で使用するためにこれらを永続させることもできます。
 
 # COMMAND ----------
 
-# DBTITLE 1,User-Specific Features
+# DBTITLE 1,ユーザー固有のメトリックの算出
 # calculate user-specific order metrics
 median_cols = ['lines_per_order', 'days_since_prior_order']
 approx_median_stmt = [f.expr(f'percentile_approx({col}, 0.5)').alias(f'user_med_{col}') for col in median_cols]
@@ -251,15 +251,15 @@ display(spark.table('instacart.user_features'))
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Generate Labels
+# MAGIC %md # Step 3: ラベルを生成する
 # MAGIC 
-# MAGIC Now we need to label each user-product pair observed across the dataset.  We will identify each user-product entry with a 1 if that record is something bought by the customer in his or her last purchase, *i.e.* during the *training* period, and a 0 if not:
+# MAGIC 次に、データセットで観測されたユーザーと製品のペアにラベルを付ける必要があります。 ここでは、ユーザーと商品の組み合わせのうち、そのレコードが顧客の最後の購入時、つまり「トレーニング期間」に購入されたものであれば「1」を、そうでなければ「0」を付けます。
 # MAGIC 
-# MAGIC **NOTE** We elected not to examine every user-product combination and instead limited our dataset to those combinations which occurred in the prior or training periods.  This is a choice that others may wish to revisit for their datasets.
+# MAGIC **注** 私たちは、すべてのユーザーと製品の組み合わせを調べるのではなく、データセットを、前回またはトレーニング期間に発生した組み合わせに限定しました。 これは、他の人が自分のデータセットで再検討したいと思う選択です。
 
 # COMMAND ----------
 
-# DBTITLE 1,Identify User-Product Combinations in Last Purchase
+# DBTITLE 1,前回の購入時にユーザーと製品の組み合わせを特定する
 train_labels = (
   order_details_
     .filter(f.expr("eval_set='train'"))
