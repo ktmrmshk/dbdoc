@@ -1,57 +1,57 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to prepare the dataset we will use to build a deep & wide collaborative filter recommender.  This notebook should be run on a **Databricks 8.1+ ML cluster**. 
+# MAGIC %md このノートブックの目的は、ディープ＆ワイド協調フィルタレコメンダーを構築するために使用するデータセットを準備することです。 このノートブックは **Databricks 8.1+ ML cluster** で実行する必要があります。
 
 # COMMAND ----------
 
-# MAGIC %md # Introduction 
+# MAGIC %md # イントロダクション
 # MAGIC 
-# MAGIC Collaborative filters leverage similarities between users to make recommendations:
+# MAGIC 協調フィルタは、ユーザー間の類似性を利用して推薦を行うものです。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/instacart_collabrecom.png" width="600">
 # MAGIC 
-# MAGIC Unlike with memory-based collaborative filters which employ the weighted averaging of product ratings (explicit or implied) between similar users, model-based collaborative filters leverage the features associated with user-product combinations to predict that a given user will click-on or purchase a particular item.  To build such a model, we will need information about users and the products they have purchased.
+# MAGIC モデルベースの協調フィルタは，類似するユーザ間の製品評価（明示的または黙示的）を加重平均するメモリベースの協調フィルタとは異なり，ユーザと製品の組み合わせに関連する特徴を利用して，特定のユーザが特定のアイテムをクリックまたは購入することを予測します． このようなモデルを構築するためには、ユーザーとそのユーザーが購入した商品に関する情報が必要となります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,ライブラリのimport
 from pyspark.sql.types import *
 import pyspark.sql.functions as f
 from pyspark.sql import window as w 
 
 # COMMAND ----------
 
-# MAGIC %md # Step 1: Load the Data
+# MAGIC %md # Step 1: データのロード
 # MAGIC 
-# MAGIC The basic building block of the collaborative filter is transactional data containing a customer identifier. The popular [Instacart dataset](https://www.kaggle.com/c/instacart-market-basket-analysis) provides us a nice collection of such data with over 3 million grocery orders placed by over 200,000 Instacart users over a nearly 2-year period across of portfolio of nearly 50,000 products. This is the same dataset used in the construction of a memory-based collaborative filter as documented in a [previously published set of notebooks](https://databricks.com/blog/2020/12/18/personalizing-the-customer-experience-with-recommendations.html) which provides a nice comparison to the techniques explored here.
+# MAGIC 協調フィルタの基本的な構成要素は、顧客の識別子を含むトランザクションデータです。人気の高い[Instacart dataset](https://www.kaggle.com/c/instacart-market-basket-analysis)は、約2年間に渡って約50,000の製品のポートフォリオに対して200,000人以上のInstacartユーザーが行った300万件以上の食料品の注文を含む、このようなデータの素晴らしいコレクションを提供しています。これは、[既刊のノートブックセット](https://databricks.com/blog/2020/12/18/personalizing-the-customer-experience-with-recommendations.html)に記載されている、記憶ベースの協調フィルタの構築に使用されたデータセットと同じものであり、ここで検討されている技術との良い比較になります。
 # MAGIC 
-# MAGIC **NOTE** Due to the terms and conditions by which these data are made available, anyone interested in recreating this work will need to download the data files from Kaggle and upload them to a folder structure as described below.
+# MAGIC **注**データの提供条件により、この作品を再現するには、Kaggleからデータファイルをダウンロードして、以下のようなフォルダ構造にアップロードする必要があります。
 # MAGIC 
-# MAGIC The primary data files available for download are organized as follows under a pre-defined [mount point](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs) that we have named */mnt/instacart*:
+# MAGIC ダウンロード可能な主要データファイルは、*/mnt/instacart*と名付けた事前定義の[マウントポイント](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs)の下に以下のように整理されています。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/instacart_filedownloads.png' width=250>
 # MAGIC 
 # MAGIC 
 # MAGIC 
-# MAGIC Read into dataframes, these files form the following data model which captures the products customers have included in individual transactions:
+# MAGIC これらのファイルはデータフレームに読み込まれ、お客様が個々のトランザクションに含めた商品をキャプチャする以下のデータモデルを形成します。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/instacart_schema2.png' width=300>
 # MAGIC 
-# MAGIC We will apply minimal transformations to this data, persisting it to the Delta Lake format for speedier access:
+# MAGIC このデータには最小限の変換を行い、高速なアクセスのためにDelta Lakeフォーマットに変換します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Database
+# DBTITLE 1,データベースの作成
 _ = spark.sql('CREATE DATABASE IF NOT EXISTS instacart')
 
 # COMMAND ----------
 
-# MAGIC %md The orders data is pre-divided into *prior* and *training* evaluation sets, where the *training* dataset represents the last order placed in the overall sequence of orders associated with a given customer.  The *prior* dataset represents those orders that proceed the *training* order.  In a previous set of notebooks built on this data, we relabeled the *prior* and *training* evaluation sets as *calibration* and *evaluation*, respectively, to better align terminology with how the data was being used.  Here, we will preserve the *prior* & *training* designations as this better aligns with our current modeling needs.
+# MAGIC %md 注文データは、「先行」と「トレーニング」の評価セットに分けられます。「トレーニング」データセットは、ある顧客に関連する注文の全体的な流れの中で、最後に発注された注文を表します。 先行」データセットは、「トレーニング」よりも前に発注された注文を表します。 このデータを使った以前のノートブックでは、データの使用方法に合わせて用語を整理するために、*prior*と*training*の評価セットをそれぞれ*calibration*と*evaluation*と再表示していました。 ここでは、現在のモデル化のニーズに合わせて、*prior*と*training*の名称を維持します。
 # MAGIC 
-# MAGIC We will add to this dataset a field, *days_prior_to_last_order*, which calculates the days from a given order to the order that represents the *training* instance. This field will help us when developing features around purchases taking place different intervals prior to the final order.  All other tables will be brought into the database without schema changes, simply converting the underlying format from CSV to delta lake for better query performance later:
+# MAGIC このデータセットには、「*days_prior_to_last_order*」というフィールドを追加します。これは、ある注文から「*training*」インスタンスを表す注文までの日数を計算するものです。このフィールドは、最終注文の前に異なる間隔で行われる購入に関する機能を開発する際に役立ちます。 その他のテーブルは、スキーマを変更することなくデータベースに導入されますが、後でクエリのパフォーマンスを向上させるために、基本的なフォーマットをCSVからdelta lakeに変換するだけです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Orders
+# DBTITLE 1,注文
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS instacart.orders')
 
@@ -116,7 +116,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Products
+# DBTITLE 1,製品
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS instacart.products')
 
@@ -163,7 +163,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Order Products
+# DBTITLE 1,製品の注文
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS instacart.order_products')
 
@@ -255,7 +255,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Aisles
+# DBTITLE 1,通路
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS instacart.aisles')
 
@@ -300,9 +300,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Combine Order Details
+# MAGIC %md # Step 2: 注文詳細の結合
 # MAGIC 
-# MAGIC With our data loaded, we will flatten our order details through a view.  This will make access to our data during feature engineering significantly easier:
+# MAGIC データが読み込まれたら、ビューを使って注文の詳細をフラットにします。 これにより、機能設計時のデータへのアクセスが非常に容易になります。
 
 # COMMAND ----------
 
