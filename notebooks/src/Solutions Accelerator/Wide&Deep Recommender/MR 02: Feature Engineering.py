@@ -31,7 +31,7 @@ prior_days = [30, 180, 360]
 
 # COMMAND ----------
 
-# MAGIC %md We can now calculate counts for various distinct elements observed within these prior windows.  These global metrics will be used to convert totals derived below into ratios in later steps. Because of the redundant nature of the metric definitions, we will iteratively construct these metrics before asking Spark to resolve them for us:
+# MAGIC %md  これで、これらの事前ウィンドウで観測された様々な個別要素のカウントを計算することができます。 これらのグローバルメトリクスは、後のステップで合計値を比率に変換するために使用されます。メトリクスの定義には冗長性があるため、Spark社に解決を依頼する前に、これらのメトリクスを繰り返し構築します。
 
 # COMMAND ----------
 
