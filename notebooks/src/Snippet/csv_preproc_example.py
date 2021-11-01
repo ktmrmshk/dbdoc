@@ -206,12 +206,8 @@ display( df_joined )
 
 # COMMAND ----------
 
-# MAGIC %fs ls dbfs:/FileStore/
-
-# COMMAND ----------
-
 # DBTITLE 1,結果のDataframeをDelta保存して永続化させる
-df_joined.write.format('delta').save('dbfs:/FileStore/csv_cook_delta/df_joined.delta')
+df_joined.write.format('delta').mode('overwrite').save('dbfs:/FileStore/csv_cook_delta/df_joined.delta')
 
 # COMMAND ----------
 
@@ -243,3 +239,15 @@ df_filtered_pandas = df_filtered.toPandas()
 
 # 確認
 df_filtered_pandas
+
+# COMMAND ----------
+
+# MAGIC %md # (補足)環境のクリーンアップ
+
+# COMMAND ----------
+
+dbutils.fs.rm('dbfs:/FileStore/csv_cook_delta/df_joined.delta', True)
+
+# COMMAND ----------
+
+
