@@ -15,10 +15,10 @@
 # COMMAND ----------
 
 # DBTITLE 1,Cluster Init Scriptの生成
-dbutils.fs.mkdirs('dbfs:/databricks/scripts/')
+dbutils.fs.mkdirs('dbfs:/FileStore/databricks/scripts/')
 
 dbutils.fs.put(
-  '/databricks/scripts/install-nltk-downloads.sh',
+  '/FileStore/databricks/scripts/install-nltk-downloads.sh',
   '''#!/bin/bash\n/databricks/python/bin/python -m nltk.downloader wordnet\n/databricks/python/bin/python -m nltk.downloader averaged_perceptron_tagger''', 
   True
   )
@@ -27,7 +27,7 @@ dbutils.fs.put(
 
 # show script content
 print(
-  dbutils.fs.head('dbfs:/databricks/scripts/install-nltk-downloads.sh')
+  dbutils.fs.head('dbfs:/FileStore/databricks/scripts/install-nltk-downloads.sh')
   )
 
 # COMMAND ----------
@@ -110,7 +110,7 @@ display(title_words)
 
 # MAGIC %md 単語が分割されたので、次に、単数形と複数形、未来形、現在形、過去形の動詞などの一般的な単語のバリエーションをどう処理するかを考えます。
 # MAGIC 
-# MAGIC このような場合、[ステミング](https://en.wikipedia.org/wiki/Stemming) という手法があります。 ステム処理では、一般的な単語の接尾辞を削除して、単語をそのルート (ステム) に切り詰めます。 効果的ではありますが、ステミングには、単語がどのように使用されているか、また、非標準的な形 態を持つ単語 (例: man vs. men*) がどのように関連しているかについての知識がありません。レマタイゼーション](https://nlp.stanford.edu/IR-book/html/htmledition/stemming-and-lemmatization-1.html) と呼ばれる少し洗練された技術を使用すると、単語の形をよりよく標準化できます。
+# MAGIC このような場合、[ステミング](https://en.wikipedia.org/wiki/Stemming) という手法があります。 ステム処理では、一般的な単語の接尾辞を削除して、単語をそのルート (ステム) に切り詰めます。 効果的ではありますが、ステミングには、単語がどのように使用されているか、また、非標準的な形 態を持つ単語 (例: *man vs. men*) がどのように関連しているかについての知識がありません。[レマタイゼーション](https://nlp.stanford.edu/IR-book/html/htmledition/stemming-and-lemmatization-1.html) と呼ばれる少し洗練された技術を使用すると、単語の形をよりよく標準化できます。
 # MAGIC 
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_coasters.jpg' width='150'><img src='https://brysmiwasb.blob.core.windows.net/demos/images/reviews_lemmatization2.png' width='1100'>
 # MAGIC 
@@ -241,7 +241,7 @@ display(title_tfidf_norm.select('id','asin','lemmata','tfidf','tfidf_norm'))
 # MAGIC 
 # MAGIC タイトル間の類似性を計算できる機能ができました。ブルートフォース（総当り）方式では、1,180万本のタイトルをそれぞれ比較し、約70兆回の比較を行うことになります。 これでは、たとえ分散型のシステムであっても、経済的に成り立ちません。 その代わりに、比較対象を類似している可能性の高い製品に限定するための近道を見つける必要があります。
 # MAGIC 
-# MAGIC コラボレーション・フィルタリング・ノートでは、この問題に取り組むための1つのアプローチとして、[Local Sensitive Hashing](https://spark.apache.org/docs/latest/ml-features.html#locality-sensitive-hashing)を検討した。 (その手法を応用して、似たようなタイトルを探すことができます。
+# MAGIC コラボレーション・フィルタリング・ノートでは、この問題に取り組むための1つのアプローチとして、[Local Sensitive Hashing](https://spark.apache.org/docs/latest/ml-features.html#locality-sensitive-hashing)を検討しました。 (その手法を応用して、似たようなタイトルを探すことができます。)
 
 # COMMAND ----------
 

@@ -286,7 +286,7 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md As with our LDA-derived features, our Word2Vec features require normalization:
+# MAGIC %md LDA由来の特徴量と同様に、Word2Vecの特徴量も正規化が必要です。
 
 # COMMAND ----------
 

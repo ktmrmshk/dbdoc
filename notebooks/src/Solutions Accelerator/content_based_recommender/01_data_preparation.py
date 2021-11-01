@@ -184,7 +184,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,List Review Files
+# DBTITLE 1,レビューファイルの確認(List)
 display(
   dbutils.fs.ls(reviews_path)
   )
@@ -341,7 +341,7 @@ _ = metadata_with_dupes.unpersist()
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Function to Unescape HTML
+# DBTITLE 1,HTMLをunescapeする関数を定義
 # pandas function to unescape HTML characters
 @pandas_udf(StringType())
 def unescape_html(text: pd.Series) -> pd.Series:
@@ -440,7 +440,7 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: データ準備のレビュー
+# MAGIC %md # Step 3: レビューデータの準備
 # MAGIC 
 # MAGIC メタデータファイルと同様に、レビューのJSONドキュメントには、私たちのニーズに関連する限られた数のフィールドしかありません。私たちは、各製品のASIN、レビュアーのID、レビューの時間を取得します。 購入が確認されたかどうかや、レビューを見つけた他のユーザーの数などのフィールドは有用かもしれませんが、今のところはそのままにしておきます。
 
