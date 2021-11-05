@@ -52,7 +52,7 @@ sql(f'use {dbname};')
 
 # DBTITLE 1,シェルコマンドの実行(Driver node上のbashで実行される)
 # MAGIC %sh 
-# MAGIC uname -r
+# MAGIC ls -l
 
 # COMMAND ----------
 
@@ -154,7 +154,7 @@ display( dbutils.fs.ls(f'/tmp/{username}/diamonds_json') )
 # COMMAND ----------
 
 # DBTITLE 1,書き出されたJSONファイルの確認2
-# MAGIC %fs head dbfs:/tmp/masahiko_kitamura_databricks_com/diamonds.json/part-00000-tid-1673204391485194256-d600e583-2f23-4605-82dc-ffbda2f18cdd-2003-1-c000.json
+# MAGIC %fs head dbfs:<ここを書き換えてください>
 
 # COMMAND ----------
 
@@ -385,7 +385,13 @@ display( data )
 
 # COMMAND ----------
 
-# DBTITLE 1,(参考: DS向け) データのサマリを見る
+# DBTITLE 1,(参考: DS向け) データのサマリを見る1 - dbutils.data.summarize 
+# データソースはparquetファイル(slow)
+dbutils.data.summarize(df)
+
+# COMMAND ----------
+
+# DBTITLE 1,(参考: DS向け) データのサマリを見る2 - pandas_profiling
 from pandas_profiling import ProfileReport
 df_profile = ProfileReport(df.toPandas(), minimal=True, title="Profiling Report", progress_bar=False, infer_dtypes=False)
 profile_html = df_profile.to_html()
@@ -957,10 +963,12 @@ pandas_df = spark_df.toPandas()
 # COMMAND ----------
 
 # DBTITLE 1,Clean-up(このデモで作成したデータなどを削除する場合は以下を実行してください)
-sql(f'DROP DATABASE {dbname} CASCADE')
+sql(f'DROP DATABASE IF EXISTS {dbname} CASCADE')
 dbutils.fs.rm(delta_path, True)
-dbutils.fs.rm(homeDir, True)
 dbutils.fs.rm(f'/tmp/{username}', True)
+dbutils.fs.rm(homeDir, True)
 
+
+# COMMAND ----------
 
 

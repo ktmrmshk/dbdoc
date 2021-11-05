@@ -2,7 +2,8 @@
 #params
 params={}
 params['geolite2']={}
-params['geolite2']['license_key'] = dbutils.secrets.get(scope='poc', key='geolite_license_key')
+params['geolite2']['s3_bucket'] = 'databricks-ktmr-s3'  # <== CSVのアップロード先のS3 Bucket
+params['geolite2']['license_key'] = dbutils.secrets.get(scope='poc', key='geolite_license_key') # <== ここをGeolite2で発行したライセンスで置き換えてください。(ProductionではSecrets機能を使用を推奨)
 params['geolite2']['asn_csv_url'] = f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key={params['geolite2']['license_key']}&suffix=zip"
 params['geolite2']['country_csv_url'] =f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City-CSV&license_key={params['geolite2']['license_key']}&suffix=zip"
 params['geolite2']['city_csv_url'] = f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country-CSV&license_key={params['geolite2']['license_key']}&suffix=zip"
@@ -10,7 +11,7 @@ params['geolite2']['s3_base_dir'] = 'geolite2'
 params['geolite2']['asn_dirname']='ASN'
 params['geolite2']['country_dirname']='Country'
 params['geolite2']['city_dirname']='City'
-params['geolite2']['s3_bucket'] = 'databricks-ktmr-s3'
+
 
 # COMMAND ----------
 
