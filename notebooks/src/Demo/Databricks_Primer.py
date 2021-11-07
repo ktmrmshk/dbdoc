@@ -90,6 +90,13 @@ sql(f'use {dbname};')
 
 # COMMAND ----------
 
+# MAGIC %r
+# MAGIC 
+# MAGIC class(iris)
+# MAGIC class(distributed_iris)
+
+# COMMAND ----------
+
 # MAGIC %md ## Sparkの基礎(データレイクとして使い方)
 # MAGIC 
 # MAGIC -----
@@ -220,7 +227,7 @@ df.createOrReplaceTempView('tempview_diamonds')
 # MAGIC %sql
 # MAGIC SELECT 
 # MAGIC   carat, cut, color, clarity, price, x * y + z as magic_number
-# MAGIC FROM diamonds
+# MAGIC FROM tempview_diamonds
 
 # COMMAND ----------
 
@@ -228,7 +235,7 @@ df.createOrReplaceTempView('tempview_diamonds')
 df_sql = sql('''
   SELECT 
     carat, cut, color, clarity, price, x * y + z as magic_number
-  FROM diamonds
+  FROM tempview_diamonds
 ''')
 
 display( df_sql )
@@ -298,9 +305,16 @@ display( df_sql )
 
 # MAGIC %r
 # MAGIC 
-# MAGIC # diamondsはpythonコード上で定義したTempView
-# MAGIC df_ret = SparkR::sql("SELECT * FROM diamonds")
+# MAGIC # tempview_diamondsはpythonコード上で定義したTempView
+# MAGIC df_ret = SparkR::sql("SELECT * FROM tempview_diamonds")
 # MAGIC display(df_ret)
+
+# COMMAND ----------
+
+# MAGIC %r
+# MAGIC 
+# MAGIC print( class(iris) ) # "data.frame" <= Rのdataframe
+# MAGIC print( class(distributed_iris) ) # "SparkDataFrame" <= Sparkのdataframe
 
 # COMMAND ----------
 
