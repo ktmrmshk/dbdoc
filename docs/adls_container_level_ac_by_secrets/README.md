@@ -41,7 +41,7 @@ Azure Data Lake Storage(blob store, 以下ADLS)のContainerレベルでのアク
 
 以下、それぞれのステップを見ていきます。
 
-**注意** ここで説明する方法は、Service Principalに割り当てるRoleの範囲をStorage Containerレベルで使用することで、Containerレベルのアクセス制御の分離をしています。このRoleの範囲をStorage　Accountレベルにすることで、同様の方法でStorage Accountごとのアクセス制御が可能になります。 
+**注意** ここで説明する方法は、Service Principalに割り当てるRoleの範囲をStorage Containerレベルで使用することで、Containerレベルのアクセス制御の分離をしています。このRoleの範囲をStorage Accountレベルにすることで、同様の方法でStorage Accountごとのアクセス制御が可能になります。 
 
 
 ## Service Principalを作成する
