@@ -90,7 +90,7 @@ Commands:
 
 ### Tokenの準備
 
-CLIの認証にはPersonal Access Token(PAT,　以下Token)を使用します(Databricks Workspaceのログインユーザー名、パスワードでの認証も可能ですが、パスワードが平文で設定ファイル内に記載されるため安全ではなく非推奨です)。CLIコマンドは、このTokenに紐づくユーザーの権限に基づいて実行されます。
+CLIの認証にはPersonal Access Token(PAT, 以下Token)を使用します(Databricks Workspaceのログインユーザー名、パスワードでの認証も可能ですが、パスワードが平文で設定ファイル内に記載されるため安全ではなく非推奨です)。CLIコマンドは、このTokenに紐づくユーザーの権限に基づいて実行されます。
 
 Tokenは各ユーザーがDatabricksのWorkspace上から発行可能です。
 
@@ -314,7 +314,7 @@ Commands:
 
 ## Secretsのアクセス制御
 
-**注意:**　本機能はPremium, Enterpriseプランでのみ利用できます。
+**注意:** 本機能はPremium, Enterpriseプランでのみ利用できます。
 
 Secretsはユーザー間・グループ内で共有可能です。ここでは、アクセス制御の方法について説明します。
 
@@ -340,7 +340,7 @@ $ databricks secrets put-acl --scope "my_aws_secrets" --principal user001@exampl
 $ databricks secrets put-acl --scope "my_aws_secrets" --principal team_abc123 --permission READ
 
 ### 現在のアクセス権限を確認する
-$ databricks　secrets list-acls --scope "my_aws_secrets"
+$ databricks secrets list-acls --scope "my_aws_secrets"
 
 Principal             Permission
 --------------------  ------------
