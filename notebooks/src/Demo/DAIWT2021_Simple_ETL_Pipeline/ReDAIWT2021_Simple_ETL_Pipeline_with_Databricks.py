@@ -3,7 +3,7 @@
 sql('set spark.databricks.delta.properties.defaults.autoOptimize.optimizeWrite = true;')
 sql('set spark.databricks.delta.properties.defaults.autoOptimize.autoCompact = true;')
 connectionProps = {"user": "readonly", "password": "readonly"}
-dbutils.fs.rm('/tmp/daiwt2021/', True)
+#dbutils.fs.rm('/tmp/daiwt2021/', True)
 
 # COMMAND ----------
 
@@ -33,7 +33,7 @@ display(df_delta)
 
 # COMMAND ----------
 
-dbutils.data.summarize( df )
+dbutils.data.summarize( df_delta )
 
 # COMMAND ----------
 
@@ -50,7 +50,7 @@ df_raw = spark.read.format('delta').load('/tmp/daiwt2021/loan_stats.delta')
 
 (
   df_raw
-  .select('loan_amnt',  # 必要なカラムの抽出
+  .select('loan_amnt', # 必要なカラムの抽出
             'term',
             'int_rate',
             'grade',
@@ -59,7 +59,7 @@ df_raw = spark.read.format('delta').load('/tmp/daiwt2021/loan_stats.delta')
             'home_ownership',
             'annual_inc',
             'loan_status')
-  .withColumn('int_rate', expr('cast(replace(int_rate,"%","") as float)'))　# データ型の変換
+  .withColumn('int_rate', expr('cast(replace(int_rate,"%","") as float)')) # データ型の変換
   .withColumnRenamed('addr_state', 'state') # カラム名変更
   .write
   .format('delta') #　Deltaで保存(silverテーブル)
@@ -350,15 +350,7 @@ schema = StructType([
   StructField("comment", StringType(), True),
   StructField("delta", IntegerType(), True),
   StructField("flag", StringType(), True),
-  StructField("geocoding", StructType([
-    StructField("city", StringType(), True),
-    StructField("country", StringType(), True),
-    StructField("countryCode2", StringType(), True),
-    StructField("countryCode3", StringType(), True),
-    StructField("stateProvince", StringType(), True),
-    StructField("latitude", DoubleType(), True),
-    StructField("longitude", DoubleType(), True),
-  ]), True),
+  StructField("geocoding", StructType([ StructField("city", StringType(), True), StructField("country", StringType(), True), StructField("countryCode2", StringType(), True), StructField("countryCode3", StringType(), True), StructField("stateProvince", StringType(), True), StructField("latitude", DoubleType(), True), StructField("longitude", DoubleType(), True), ]), True),
   StructField("isAnonymous", BooleanType(), True),
   StructField("isNewPage", BooleanType(), True),
   StructField("isRobot", BooleanType(), True),
@@ -374,7 +366,7 @@ schema = StructType([
   StructField("wikipedia", StringType(), True),
 ])
 
-#　JSONストリームを解析し、Deltaに保存
+#　読み込み
 stream_df = (
   spark.readStream.format('kafka') # Kafkaをソースと指定
   .option('kafka.bootstrap.servers', 'server2.databricks.training:9092')
@@ -384,7 +376,7 @@ stream_df = (
 
 # ELTをして、Deltaに書き込む
 (
-  stream_DF
+  stream_df
   .withColumn('json', from_json(col('value').cast('string'), schema))   # Kafkaのバイナリデータを文字列に変換し、from_json()でJSONをパース
   .select(col("json.*"))                    # JSONの子要素だけを取り出す
   .writeStream                              # writeStream()でストリームを書き出す
@@ -487,7 +479,7 @@ df.write.format('delta').save('/tmp/daiwt2021_lts/yellow_taxi.delta')
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC OPTIMIZE delta.`/tmp/daiwt2021_lts/yellow_taxi.delta`
+# MAGIC OPTIMIZE delta.`/tmp/daiwt2021_lts/yellow_taxi.delta`　ZORDER BY (vendor_id, passenger_count, payment_type)
 
 # COMMAND ----------
 
