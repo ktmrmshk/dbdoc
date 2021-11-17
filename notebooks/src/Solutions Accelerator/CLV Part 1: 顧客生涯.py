@@ -59,6 +59,7 @@ dbutils.fs.ls('file:///dbfs/FileStore/tables/online_retail')
 
 # COMMAND ----------
 
+# DBTITLE 1,サンプルデータを読み込む
 import pandas as pd
 import numpy as np
 
@@ -131,7 +132,7 @@ orders_pd.head(10)
 orders = spark.createDataFrame(orders_pd)
 
 # Temp Viewの作成
-orders.createOrReplaceTempView('orders') 
+orders.createOrReplaceTempView('orders')
 
 # COMMAND ----------
 
@@ -274,6 +275,7 @@ orders.createOrReplaceTempView('orders')
 # MAGIC     WHERE CustomerId IS NOT NULL
 # MAGIC     )
 # MAGIC SELECT -- Per-Customer Average Days Between Purchase Events
+# MAGIC   CustomerID,
 # MAGIC   AVG(
 # MAGIC     DATEDIFF(a.NextInvoiceDate, a.InvoiceDate)
 # MAGIC     ) as AvgDaysBetween
@@ -301,6 +303,8 @@ orders.createOrReplaceTempView('orders')
 # MAGIC * **Age (T)** - 経過日数, 初めての取引発生した日から現在の日付（またはデータセットの最終の日)
 # MAGIC * **Recency** - 直近の取引があった時点のAge。つまり、初回の取引の日から直近(最後の)取引があった日までの経過日数。
 # MAGIC 
+# MAGIC <img src="https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/image/CLV_fig1.png" width=500>
+# MAGIC 
 # MAGIC 顧客年齢などの指標を計算する際には、データセットがいつ終了するかを考慮する必要があることに注意してください。今日の日付を基準にしてこれらのメトリクスを計算すると、誤った結果になる可能性があります。そこで、データセットの最後の日付を特定し、それを *今日の日付* と定義して、すべての計算を行うことにします。
 # MAGIC 
 # MAGIC ここでは、lifetimesライブラリに組み込まれた機能を使って、どのように計算を行うかをみていきます。
@@ -325,6 +329,14 @@ metrics_pd = (
 
 # display first few rows
 metrics_pd.head(10)
+
+# COMMAND ----------
+
+# DBTITLE 1,CustomerID = 12347の購入パターンで確認
+# MAGIC %sql
+# MAGIC SELECT  TO_DATE(InvoiceDate) FROM orders WHERE CustomerID = 12348
+# MAGIC GROUP BY TO_DATE(InvoiceDate)
+# MAGIC ORDER BY TO_DATE(InvoiceDate)
 
 # COMMAND ----------
 
@@ -735,8 +747,7 @@ model.fit( input_pd['frequency_cal'], input_pd['recency_cal'], input_pd['T_cal']
 # COMMAND ----------
 
 # ホールドアウト期間のFrequencyを学習したモデルを使って推測する
-frequency_holdout_predicted = model.predict( input_pd['duration_holdout'], input_pd['frequency_cal'], input_pd['recency_cal'], input_pd['T_cal'])
-
+s
 # 実際のFrequency
 frequency_holdout_actual = input_pd['frequency_holdout']
 
@@ -1015,7 +1026,7 @@ import matplotlib.pyplot as plt
 plt.clf()
 
 # customer of interest
-CustomerID = '12383'
+CustomerID = '12383' #'12348'#
 
 # grab customer's metrics and transaction history
 cmetrics_pd = input_pd[input_pd['CustomerID']==CustomerID]
@@ -1088,6 +1099,7 @@ filtered_pd['purchases_next30days']=(
   )
 
 filtered_pd.head(10)
+#display( spark.createDataFrame( filtered_pd ) )
 
 # COMMAND ----------
 

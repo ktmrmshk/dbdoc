@@ -311,6 +311,7 @@ display( df_sql )
 
 # COMMAND ----------
 
+# DBTITLE 1,変数のデータ型を確認する
 # MAGIC %r
 # MAGIC 
 # MAGIC print( class(iris) ) # "data.frame" <= Rのdataframe

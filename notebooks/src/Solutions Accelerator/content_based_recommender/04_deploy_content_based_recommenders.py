@@ -266,7 +266,7 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# DBTITLE 1,Assemble Descriptions Pipeline
+# DBTITLE 1,Descriptionのパイプラインの構築
 # step 1: flatten the description to form a single string
 descript_flattener = SQLTransformer(
     statement = '''
@@ -321,7 +321,7 @@ descript_pipeline = Pipeline(stages=[
 
 # COMMAND ----------
 
-# DBTITLE 1,Fit & Test Descriptions Pipeline
+# DBTITLE 1,モデル学習・テスト
 # retrieve descriptions
 descriptions = (
     spark
@@ -341,7 +341,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Fitted Descriptions Pipeline
+# DBTITLE 1,学習済みDescriptionパイプラインの永続化
 # persist pipeline
 with mlflow.start_run():
   mlflow.spark.log_model(
@@ -418,7 +418,7 @@ class CategoryFlattener(
 
 # COMMAND ----------
 
-# DBTITLE 1,Assemble Categories Pipeline
+# DBTITLE 1,Categorieパイプラインの構築
 # step 1: flatten hierarchy
 category_flattener = CategoryFlattener(
     inputCol='category',
@@ -446,7 +446,7 @@ category_pipeline = Pipeline(stages=[
 
 # COMMAND ----------
 
-# DBTITLE 1,Fit & Test Categories Pipeline
+# DBTITLE 1,Categoriesパイプラインのモデル学習・テスト
 # retrieve categories
 categories = (
     spark
@@ -465,7 +465,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Fitted Categories Pipeline
+# DBTITLE 1,学習済みCategorieパイプラインの永続化
 # persist pipeline
 with mlflow.start_run():
   mlflow.spark.log_model(
@@ -476,7 +476,7 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# MAGIC %md # Step 2: Generate Product Features
+# MAGIC %md # Step 2: 製品特徴量の生成
 # MAGIC 
 # MAGIC パイプラインが定義され、トレーニングされ、永続化されたことで、今度はレコメンデーションを構築するためのフィーチャーの生成に集中できるようになりました。 新しいパイプラインを導入する際には、新しい情報を使って機能テーブルを初期化する必要があります。 この初期化を行った後は、メタデータテーブルに新製品が追加されたり、製品のメタデータが変更されたりした場合に、パイプラインを再実行する必要があります。
 # MAGIC 
@@ -492,7 +492,7 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# DBTITLE 1,Attempt to Retrieve Titles Pipeline
+# DBTITLE 1,Titleパイプラインの検索を試す
 # retrieve pipeline from registry
 retrieved_title_pipeline = mlflow.spark.load_model(
     model_uri='models:/title_fitted_pipeline/None'  # models:/<model name defined at persistence>/<stage>
@@ -511,14 +511,14 @@ retrieved_title_pipeline = mlflow.spark.load_model(
 
 # COMMAND ----------
 
-# DBTITLE 1,Force Environment to See Custom Transformer in This Notebook
+# DBTITLE 1,カスタムのTransformerを見るためにnotebook上の環境を固定する
 # ensure top-level environment sees class definition (which must be included in this notebook)
 m = __import__('__main__')
 setattr(m, 'NLTKWordNetLemmatizer', NLTKWordNetLemmatizer)
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Titles Pipeline
+# DBTITLE 1,Titleパイプラインの検索
 # retrieve pipeline from registry
 retrieved_title_pipeline = mlflow.spark.load_model(
     model_uri='models:/title_fitted_pipeline/None'
@@ -526,11 +526,11 @@ retrieved_title_pipeline = mlflow.spark.load_model(
 
 # COMMAND ----------
 
-# MAGIC %md Let's go ahead and retrieve the remaining pipelines:
+# MAGIC %md  残りのパイプラインについても同様にみていきましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Descriptions Pipeline
+# DBTITLE 1,Descriptionパイプラインの検索
 # retrieve pipeline from registry
 retrieved_descript_pipeline = mlflow.spark.load_model(
     model_uri='models:/descript_fitted_pipeline/None'
@@ -538,7 +538,7 @@ retrieved_descript_pipeline = mlflow.spark.load_model(
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Categories Pipeline
+# DBTITLE 1,Categorieパイプラインの検索
 # ensure top-level environment sees class definition (which must be included in this notebook)
 m = __import__('__main__')
 setattr(m, 'CategoryFlattener', CategoryFlattener)
@@ -554,7 +554,7 @@ retrieved_category_pipeline = mlflow.spark.load_model(
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Title Features DeltaLake Object (If Needed)
+# DBTITLE 1,(必要に応じて)Title特徴量のデルタレイクを作成する
 # retreive an empty dataframe
 titles_dummy = (
   spark
@@ -585,7 +585,7 @@ title_dummy_features
 
 # COMMAND ----------
 
-# DBTITLE 1,Transform Titles to Features
+# DBTITLE 1,タイトルから特徴量に変換する
 # retrieve titles to process for features
 titles_to_process = (
   spark
@@ -604,7 +604,7 @@ title_features = (
 
 # COMMAND ----------
 
-# DBTITLE 1,Merge Title Features
+# DBTITLE 1,Title特徴量をマージする
 # access reviews table in prep for merge
 target = DeltaTable.forPath(spark, '/mnt/reviews/gold/title_pipeline_features')
 
@@ -625,11 +625,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md We can now apply this pattern to our description & category features:
+# MAGIC %md このパターンを説明文やカテゴリー機能に応用してみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Description Features
+# DBTITLE 1,Description特徴量を生成する
 # retreive an empty dataframe
 descript_dummy = (
   spark
@@ -690,7 +690,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Distribution by Bucket
+# DBTITLE 1,バケットごとに分布を見る
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -702,7 +702,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Category Features
+# DBTITLE 1,Category特徴量を生成する
 # retreive an empty dataframe
 category_dummy = (
   spark
@@ -763,23 +763,23 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md Returning to our *strawman* architecture, we've implemented the following components:
+# MAGIC %md *"ストローマン"* アーキテクチャに戻って、以下のコンポーネントを実装しました。
 # MAGIC 
 # MAGIC <img src="https://brysmiwasb.blob.core.windows.net/demos/images/reviews_feature_pipelines7.png" width="700">
 # MAGIC 
-# MAGIC Now let's turn to user-profiles to close out the feature engineering side of the solution.
+# MAGIC 次に、ユーザープロファイルに目を向けて、このソリューションの機能エンジニアリング面を締めくくりましょう。
 
 # COMMAND ----------
 
-# MAGIC %md # Step 3: Generate User-Profiles
+# MAGIC %md  # ♪ステップ3：ユーザープロファイルの生成
 # MAGIC 
-# MAGIC To generate user-profiles, we won't assemble a pipeline. This is because the work is much more easily implemented using DataFrame manipulations. But like the earlier pipelines, we might want to consider using some kind of change detection to limit the number of profiles we need to generate on a given cycle.  
+# MAGIC ユーザープロファイルを生成するために、パイプラインを組み立てることはしません。なぜなら、この作業はDataFrameの操作でより簡単に実装できるからです。しかし、以前のパイプラインのように、あるサイクルで生成する必要のあるプロファイルの数を制限するために、ある種の変更検出を使用することを検討したいと思うかもしれません。 
 # MAGIC 
-# MAGIC With our review data, we do have access to a *unixReviewTime* field with which we could identify new reviews. Depending on how we approach the problem of user-profile generation, we might consider creating profiles for just those users with new reviews. The code for detecting new reviews based on the current date is included here for review but commented out so that we are generating profiles based on all available reviews (that meet the criteria discussed in the last notebook):
+# MAGIC レビューデータでは、新しいレビューを識別するための *unixReviewTime* フィールドにアクセスできます。ユーザープロファイル生成の問題にどのように取り組むかにもよりますが、新しいレビューを持つユーザーだけにプロファイルを作成することも考えられます。現在の日付に基づいて新しいレビューを検出するコードは、レビュー用にここに含まれていますが、コメントアウトされているので、利用可能なすべてのレビュー（前のノートブックで議論した基準を満たすもの）に基づいてプロファイルを生成しています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Raw User-Profile
+# DBTITLE 1,生のユーザープロファイルの生成
 user_profiles_raw = (
   spark
     .sql('''
@@ -810,11 +810,11 @@ user_profiles_raw = (
 
 # COMMAND ----------
 
-# MAGIC %md It's important to note that the Normalizer transform has no dependency on training. As such, we can create one as needed, instead of being concerned about persisting one for re-use:
+# MAGIC %md ここで重要なのは、Normalizer トランスフォームはトレーニングに依存していないということです。そのため、再利用のために永続化することを気にすることなく、必要に応じて作成することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Normalize Profile Scores
+# DBTITLE 1,プロファイルスコアの正規化
 user_profiles_norm = (
   Normalizer(inputCol='w2v', outputCol='features', p=2.0)
     .transform(user_profiles_raw)
@@ -822,11 +822,11 @@ user_profiles_norm = (
 
 # COMMAND ----------
 
-# MAGIC %md Unlike the Normalizer, the clustering model used to assign our profiles to buckets does depend on prior training. It's important that the model we retrieve is associated with the description features accessed in the first step of our user-profile creation.  Here, we'll access that model directly from the pipeline, by-passing the transformations leading into it:
+# MAGIC %md ノーマライザーとは異なり、プロファイルをバケットに割り当てるために使用されるクラスタリングモデルは、事前のトレーニングに依存します。ユーザープロファイル作成の最初のステップでアクセスした説明の特徴に関連するモデルを取得することが重要です。 ここでは、パイプラインから直接そのモデルにアクセスし、そこに至るまでの変換を省略します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Assign Profiles to Bucket
+# DBTITLE 1,バケットへのプロファイルの割り当て
 # retrieve pipeline from registry
 retrieved_descript_pipeline = mlflow.spark.load_model(
     model_uri='models:/descript_fitted_pipeline/None'
@@ -839,11 +839,11 @@ user_profiles = (
 
 # COMMAND ----------
 
-# MAGIC %md We can now persist our user-profiles and their bucket/cluster assignments:
+# MAGIC %md これで、ユーザープロファイルとそのバケット/クラスタの割り当てを永続化することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Profiles 
+# DBTITLE 1,プロファイルの永続化
 # retreive an empty dataframe
 user_profiles_dummy_features = (
   user_profiles
@@ -880,33 +880,33 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md The *Featuring Engineering* portion of our architecture has now been completed.
+# MAGIC %md アーキテクチャのうち、「Featuring Engineering」の部分が完成しました。
 
 # COMMAND ----------
 
-# MAGIC %md # Step 4a: Create Product-Based Recommendations
+# MAGIC %md # Step 4a: 製品ベースのレコメンデーションの作成
 # MAGIC 
-# MAGIC With features in place and being kept up-to-date with jobs leveraging the pipelines presented in the last few steps, we now can consider how we might publish our recommendations to the application layer. Performance with regards to the retrieval of the recommendations is going to be essential, but with so many products in the portfolio, generating and caching recommendations ahead of time may be time-consuming and cost-prohibitive. 
+# MAGIC ここまでの数ステップで紹介したパイプラインを利用して機能を実装し、ジョブを最新の状態に保つことができたので、今度はアプリケーション層にレコメンデーションをどのように公開するかを考えてみましょう。レコメンデーションの取得に関するパフォーマンスは不可欠ですが、ポートフォリオには非常に多くの製品が含まれているため、レコメンデーションを事前に生成してキャッシュすることは、時間とコストがかかる可能性があります。
 # MAGIC 
-# MAGIC The right solution will strike a balance between all these concerns, and as was mentioned at the top of this notebook, depends on the input of numerous parties, but we imagine some amount of caching, whether its populated through batch processes are on-the-fly to enable some measure of re-use will be a component of many solutions. Popular targets for the caching and serving of recommendation data include the following, all of which can be written to by Databricks:</p>
+# MAGIC 適切なソリューションは、これらすべての懸念事項のバランスを取る必要があり、このノートの冒頭で述べたように、多くの関係者の意見に依存します。しかし、バッチ処理で生成されたものであれ、再利用を可能にするオンザフライのものであれ、ある程度のキャッシングは多くのソリューションの構成要素になると想像しています。レコメンデーション データのキャッシングおよび提供のための一般的なターゲットには次のようなものがあり、すべて Databricks で書き込むことができます：</p> * [Redis]()
 # MAGIC 
 # MAGIC * [Redis](https://docs.databricks.com/data/data-sources/redis.html)
 # MAGIC * [MongoDB](https://docs.databricks.com/data/data-sources/mongodb.html)
 # MAGIC * [CouchBase](https://docs.databricks.com/data/data-sources/couchbase.html)
 # MAGIC * [Azure CosmosDB](https://docs.databricks.com/data/data-sources/azure/cosmosdb-connector.html)
-# MAGIC * AWS DocumentDB: See info regarding MongoDB or consider using [AWS Glue](https://aws.amazon.com/about-aws/whats-new/2020/04/aws-glue-now-supports-reading-from-amazon-documentdb-and-mongodb-tables/) for orchestration
+# MAGIC * AWS DocumentDB: MongoDBに関する情報を参照するか、オーケストレーションに[AWS Glue](https://aws.amazon.com/about-aws/whats-new/2020/04/aws-glue-now-supports-reading-from-amazon-documentdb-and-mongodb-tables/)の使用を検討する。
 # MAGIC 
-# MAGIC For this solution, we will focus on the logic required to pre-generate recommendations and simply display the results.  Code samples provided in the links above should enable you to move the assembled recommendations from the DataFrames into the targeted caching platform. 
+# MAGIC 今回のソリューションでは、レコメンデーションを事前に生成し、その結果をシンプルに表示するために必要なロジックに焦点を当てます。 上記のリンクで提供されているコードサンプルを使えば、組み立てられたレコメンデーションをDataFramesから目的のキャッシングプラットフォームに移すことができるはずです。
 
 # COMMAND ----------
 
-# MAGIC %md Our first step is to determine for which products we will be making recommendations.  We'll limit our processing to 10,000 products in the *Home & Kitchen* category.  In the real world, we might need to process more or fewer products in order to work our way efficiently through product backlogs or to keep up with changes in our product portfolio.
+# MAGIC %md まず最初に、どの製品に対してレコメンドを行うかを決定します。 ここでは、「ホーム＆キッチン」カテゴリーの製品10,000点を対象とします。 実際には、製品のバックログを効率的に処理したり、製品ポートフォリオの変化に対応したりするために、処理する製品の数を増やしたり減らしたりする必要があるかもしれません。
 # MAGIC 
-# MAGIC We'll refer to the products for which we are making recommendations as our **a-product**s and the products that make up potential recommendations as our **b-product**s.  The b-products are limited here to products within the same high-level product category, *i.e.* *Home & Kitchen*, which, again, may or may not be the right approach for your needs:
+# MAGIC ここでは、推奨する製品を「a製品」と呼び、潜在的な推奨製品を構成する製品を「b製品」と呼びます。 b製品は、同じ上位製品カテゴリー（例：*ホーム＆キッチン*）に属する製品に限定していますが、これはお客様のニーズに合ったアプローチであるかどうかは別です。
 
 # COMMAND ----------
 
-# DBTITLE 1,Determine Products with which to Make Recommendations
+# DBTITLE 1,提案する製品の決定
 ## parallelize downstream work
 #spark.conf.set('spark.sql.shuffle.partitions', sc.defaultParallelism * 10)
 
@@ -929,13 +929,13 @@ product_b = (
 
 # COMMAND ----------
 
-# MAGIC %md Let's now calculate similarities using our content-derived features.  We envision this process as separate from the feature generation steps above, but we will leverage the already retrieved pipelines in the code below to avoid repeating that step.
+# MAGIC %md それでは、コンテンツ由来の特徴を使って類似度を計算してみましょう。 このプロセスは、上述の特徴量生成のステップとは別のものとして想定していますが、このステップを繰り返さないように、以下のコードではすでに検索されたパイプラインを利用します。
 # MAGIC 
-# MAGIC Notice that we are setting some limits on similarity scores and on distance between products (in the LSH lookup).  These limits are implemented to reduce the volume of data headed into the final recommendation scoring calculation.  Knowledge of your data and your business needs should be used to inform how or if such restrictions should be implemented:
+# MAGIC 類似度のスコアと製品間の距離（LSHルックアップ）にいくつかの制限を設けていることに注意してください。 これらの制限は、最終的なレコメンデーション・スコアリングの計算に向かうデータ量を減らすために実装されています。 このような制限を設けるかどうかは、お客様のデータやビジネスニーズを考慮して決定してください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Similarity Functions
+# DBTITLE 1,相似関数の定義
 # MAGIC %scala
 # MAGIC 
 # MAGIC import math._
@@ -963,7 +963,7 @@ product_b = (
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Category Similarities
+# DBTITLE 1,カテゴリの類似性の算出
 # categories for products for which we wish to make recommendations
 a = (
   spark
@@ -995,7 +995,7 @@ display(category_similarity)
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Title Similarities
+# DBTITLE 1,タイトルの類似性の計算
 # categories for products for which we wish to make recommendations
 a = (
   spark
@@ -1034,11 +1034,11 @@ display(title_similarity)
 
 # COMMAND ----------
 
-# MAGIC %md **NOTE** We've included the code for calculating description-based similarities though we are not using this in the final calculations at the end of this notebook.
+# MAGIC %md **NOTE** 説明文ベースの類似性を計算するコードを掲載していますが、このノートブックの最後にある最終的な計算には使用していません。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Description Similarities
+# DBTITLE 1,説明文の類似性の算出
 ## categories for products for which we wish to make recommendations
 #a = (
 #  spark
@@ -1069,13 +1069,13 @@ display(title_similarity)
 
 # COMMAND ----------
 
-# MAGIC %md With our similarity scores calculated leveraging title and category data, we can combine these scores to create a final score.  While we have used buckets to limit the number of comparisons being performed in the steps above, there are still a lot of products we could potentially return here.  A simple function is used to limit products to a top N number of products:
+# MAGIC %md タイトルとカテゴリーのデータを利用して類似性スコアを算出し、これらのスコアを組み合わせて最終スコアを作成します。 上記のステップでは、バケットを使って比較の数を制限しましたが、ここで返すことのできる商品はまだたくさんあります。 シンプルな関数を使って、上位N個の製品に制限しています。
 # MAGIC 
-# MAGIC **NOTE** You could do something similar using a row number function and a filter constraint, but we found that the function worked a bit better in this situation.
+# MAGIC **注** 行番号関数とフィルタ制約を使用して同様のことを行うこともできますが、この状況では関数の方が少しうまく機能することがわかりました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Recommendations
+# DBTITLE 1,レコメンデーションの生成
 # function to get top N product b's for a given product a
 def get_top_products( data ):
   '''the incoming dataset is expected to have the following structure: id_a, id_b, score'''  
@@ -1104,7 +1104,7 @@ display(recommendations)
 
 # COMMAND ----------
 
-# DBTITLE 1,Clean Up Cached Datasets
+# DBTITLE 1,キャッシュされたデータセットのクリーンアップ
 def list_cached_dataframes():
     return [(k,v) for (k,v) in [(k,v) for (k, v) in globals().items() if isinstance(v, DataFrame)] if v.is_cached]
   
@@ -1113,15 +1113,15 @@ for name, obj in list_cached_dataframes():
 
 # COMMAND ----------
 
-# MAGIC %md # Step 4b: Create Profile-Based Recommendations
+# MAGIC %md # Step 4b: プロファイルベースのレコメンデーションの作成
 # MAGIC 
-# MAGIC As with our content-only recommenders, there are numerous factors that go into deciding whether recommendations should be pre-computed and cached or calculated dynamically.  Instead of sorting out the strategies one might take with regards to that, we'll focus here on defining the logic required to assemble the recommendations from the feature sets as they currently are recorded.
+# MAGIC コンテンツのみのレコメンダーと同様に、レコメンデーションを事前に計算してキャッシュすべきか、それとも動的に計算すべきかを決定するには多くの要因があります。 ここでは、コンテンツのみのレコメンダーと同様に、レコメンデーションを事前に計算してキャッシュするか、それとも動的に計算するかを決定するための要素が数多くあります。
 # MAGIC 
-# MAGIC Here, we'll limit the generation of recommendations to a limited number of users and constrain our recommendations to the top 25 highest scoring items:
+# MAGIC ここでは、レコメンデーションの生成を限られた数のユーザーに限定し、レコメンデーションの対象をスコアの高い上位25項目に限定します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Similarity Function
+# DBTITLE 1,類似性関数の定義
 # MAGIC %scala
 # MAGIC 
 # MAGIC import math._
@@ -1138,7 +1138,7 @@ for name, obj in list_cached_dataframes():
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Datasets for Recommendations
+# DBTITLE 1,レコメンデーション用データセットの取得
 products = (
   spark
     .table('DELTA.`/mnt/reviews/gold/descript_pipeline_features`')
@@ -1163,7 +1163,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate Recommendations
+# DBTITLE 1,レコメンデーションの生成
 # make recommendations for sampled reviewers
 recommendations = (
   products
@@ -1185,7 +1185,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Clean Up Cached Datasets
+# DBTITLE 1,キャッシュされたデータセットのクリーンアップ
 def list_cached_dataframes():
     return [(k,v) for (k,v) in [(k,v) for (k, v) in globals().items() if isinstance(v, DataFrame)] if v.is_cached]
   
