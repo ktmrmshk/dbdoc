@@ -2,7 +2,6 @@
 # 初期化設定
 sql('set spark.databricks.delta.properties.defaults.autoOptimize.optimizeWrite = true;')
 sql('set spark.databricks.delta.properties.defaults.autoOptimize.autoCompact = true;')
-connectionProps = {"user": "readonly", "password": "readonly"}
 #dbutils.fs.rm('/tmp/daiwt2021/', True)
 
 # COMMAND ----------
