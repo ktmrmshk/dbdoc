@@ -415,7 +415,7 @@ tweet_schema = df.schema
 df_autoloader = (
   spark.readStream.format('cloudFiles')
   .option('cloudFiles.format', 'json')
-  .option('cloudFiles.maxBytesPerTrigger', '50KB')
+  .option('cloudFiles.maxBytesPerTrigger', '50KB') # 一度に読むサイズ上限
   .schema(tweet_schema)
   .load('s3a://databricks-ktmr-s3/stocknet-dataset/tweet/raw/AAPL/*')
 )
@@ -423,7 +423,7 @@ df_autoloader = (
 (
   df_autoloader.writeStream.format('delta')
   .option('checkpointLocation', '/tmp/daiwt2021/tweet.checkpoint')
-  .option('maxFilesPerTrigger', 25)
+  .option('maxFilesPerTrigger', 25) # 一度に読むファイル数上限
   .outputMode('append')
   .trigger(processingTime='2 seconds') # 2秒に一度処理
   #.trigger(once=True) # 一度だけ処理
