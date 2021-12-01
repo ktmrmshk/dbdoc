@@ -7,6 +7,10 @@
 
 # COMMAND ----------
 
+# MAGIC %fs ls /mnt/kkbox/
+
+# COMMAND ----------
+
 # MAGIC %md ###ステップ1: データの読み込み
 # MAGIC 
 # MAGIC 2018年、台湾に拠点を置く人気の音楽ストリーミングサービスである[KKBox](https://www.kkbox.com/)は、データ＆AIコミュニティが将来の期間にどの顧客が解約するかを予測することに挑戦することを目的として、2年強の（匿名化された）顧客のトランザクションとアクティビティのデータからなる[データセット](https://www.kaggle.com/c/kkbox-churn-prediction-challenge/data)を公開しました。 
