@@ -1,21 +1,21 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to use our trained model to generate predictions that may be imported into a downstream CRM system.  It should be run on a cluster leveraging Databricks ML 7.1+ and **CPU-based** nodes.
+# MAGIC %md このノートブックの目的は、学習したモデルを使って、下流のCRMシステムにインポート可能な予測を生成することです。 このノートブックは、Databricks ML 7.1+と**CPUベース**のノードを利用したクラスタ上で実行する必要があります。
 
 # COMMAND ----------
 
-# MAGIC %md ###Step 1: Retrieve Data for Scoring
+# MAGIC %md ###Step 1: スコアリングのためのデータの取得
 # MAGIC 
-# MAGIC The purpose of training our churn prediction model is to identify target customers for proactive retention management. As such, we need to periodically make predictions from feature information and make those predictions available within the systems supporting such campaigns.
+# MAGIC 解約予測モデルを学習する目的は、積極的なリテンション管理を行う対象顧客を特定することです。そのためには、定期的に特徴情報から予測を行い、その予測をキャンペーンをサポートするシステムで利用できるようにする必要があります。
 # MAGIC 
-# MAGIC With this in mind, we'll examine how we might retrieve our recently trained model and use it to generate scored output which can be imported into Salesforce, Microsoft Dynamics and many other systems accepting custom data imports.  While there are multiple paths for the integration of such output with these systems, we'll explore the simplest, *i.e.* a flat-file export.
+# MAGIC そこで今回は、最近学習したモデルを取り出して、SalesforceやMicrosoft Dynamicsなど、カスタムデータのインポートが可能な多くのシステムにインポートできるよう、スコアリングされた出力を生成する方法を検討します。 このような出力をこれらのシステムに統合するには複数の方法がありますが、ここでは最もシンプルな方法、すなわち*フラットファイルへのエクスポートを検討します。
 # MAGIC 
-# MAGIC To get started, we'll first retrieve feature data associated with the period for which we intend to make predictions.  Given we trained our model on February 2017 data and evaluated our model on March 2017 data, it would make sense for us to generate prediction output for April 2017.  That said, we want to avoid stepping on the toes of the Kaggle competition associated with this dataset so that we'll limit ourselves to generating March 2017 prediction output.
+# MAGIC まず最初に、予測を行う期間に関連する特徴データを取得します。 2017年2月のデータでモデルを学習し、2017年3月のデータでモデルを評価したことを考えると、2017年4月の予測出力を生成することは理にかなっています。 とはいえ、このデータセットに関連するKaggleコンペティションの爪先を踏むことは避けたいので、ここでは2017年3月の予測出力を生成することに限定します。
 # MAGIC 
-# MAGIC Unlike in previous notebooks, we'll limit data retrieval to features and a customer identifier, ignoring the churn lables as we would not have these if we were making actual future predictions. We'll load the data first into a Spark DataFrame and then into a pandas dataframe so that we might demonstrate two different techniques for generating output, each of which depends on a different dataframe type:
+# MAGIC これまでのノートブックとは異なり、データの取得はフィーチャーと顧客識別子に限定し、実際に将来の予測を行う場合には解約テーブルは必要ないので無視します。データをまずSpark DataFrameにロードし、次にpandas dataframeにロードすることで、出力を生成するための2つの異なる手法を実演しますが、それぞれの手法は異なるデータフレームタイプに依存します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Needed Libraries
+# DBTITLE 1,必要なライブラリのインポート
 import mlflow
 import mlflow.pyfunc
 
@@ -27,7 +27,7 @@ from pyspark.sql.functions import struct
 
 # COMMAND ----------
 
-# DBTITLE 1,Load Features & Customer Identifier
+# DBTITLE 1,特徴量とCustomer IDの読み込み
 # retrieve features & identifier to Spark DataFrame
 input = spark.sql('''
   SELECT
@@ -74,13 +74,13 @@ msno = input_pd[['msno']] # customer identifiers to which we will append predict
 
 # COMMAND ----------
 
-# MAGIC %md ###Step 2a: Generate Prediction Output Using the As-Is Model
+# MAGIC %md ###Step 2a: 現状のモデルを利用した予測出力の生成
 # MAGIC 
-# MAGIC Regardless of whether our intent is to use the [Microsoft Dynamics CRM Common Data Service](https://docs.microsoft.com/en-us/powerapps/developer/common-data-service/import-data) or [Salesforce DataLoader](https://developer.salesforce.com/docs/atlas.en-us.dataLoader.meta/dataLoader/data_loader.htm), we need to produce a UTF-8, delimited text file with a header row. Leveraging a pandas dataframe and the model's native functionality, we can deliver such a file as follows:
+# MAGIC [Microsoft Dynamics CRM Common Data Service](https://docs.microsoft.com/en-us/powerapps/developer/common-data-service/import-data)と[Salesforce DataLoader](https://developer.salesforce.com/docs/atlas.en-us.dataLoader.meta/dataLoader/data_loader.htm)のどちらを使用するかに関わらず、ヘッダー行を含むUTF-8で区切られたテキストファイルを生成する必要があります。pandasのデータフレームとモデルのネイティブ機能を利用して、次のようにしてこのようなファイルを提供することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Model from Registry
+# DBTITLE 1,レジストリからモデルを取得する
 model_name = 'churn-ensemble'
 
 model = mlflow.pyfunc.load_model(
@@ -89,7 +89,7 @@ model = mlflow.pyfunc.load_model(
 
 # COMMAND ----------
 
-# DBTITLE 1,Save Predictions to File
+# DBTITLE 1,予測値をファイルに保存
 # databricks location for the output file
 output_path = '/mnt/kkbox/output_native/'
 shutil.rmtree('/dbfs'+output_path, ignore_errors=True) # delete folder & contents if exists
@@ -117,7 +117,7 @@ output[['msno', 'period', 'churn']].to_csv(
 
 # COMMAND ----------
 
-# MAGIC %md And now we can examine the file and its contents:
+# MAGIC %md ファイルとその内容を見てみましょう。
 
 # COMMAND ----------
 
@@ -128,15 +128,15 @@ print(
 
 # COMMAND ----------
 
-# MAGIC %md ###Step 2b: Generate Prediction Output using Spark UDF
+# MAGIC %md ###Step 2b: Spark UDFを使って予測出力を生成する
 # MAGIC 
-# MAGIC Using the native APIs on the sklearn model to make predictions (as was done in Step 2a) is familiar to most Data Scientists, but it's Data Engineers who will typically implementing this phase of our work.  For these individuals, using Spark SQL might be more familiar and would certainly scale better in scenarios when we are working with large numbers of customers.
+# MAGIC ステップ2aのようにsklearnモデルのネイティブAPIを使用して予測を行うことは、多くのデータサイエンティストにとって馴染みのあることですが、このフェーズを実施するのは一般的にはデータエンジニアです。 このような人たちにとっては、Spark SQLを使う方が親しみやすいかもしれませんし、大量の顧客を相手にするシナリオでは拡張性も高いでしょう。
 # MAGIC 
-# MAGIC To use our model within Spark, we must first register it as a user-defined function (UDF):
+# MAGIC モデルをSparkで使用するには、まずユーザー定義関数（UDF）として登録する必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Register Model as UDF
+# DBTITLE 1,モデルをUDFに登録
 churn_udf = mlflow.pyfunc.spark_udf(
   spark, 
   'models:/{0}/production'.format(model_name), 
@@ -145,11 +145,11 @@ churn_udf = mlflow.pyfunc.spark_udf(
 
 # COMMAND ----------
 
-# MAGIC %md Now, we can use our UDF to generate predictions.  While it is possible to use the UDF within a SQL statement, because we have a very long list of features which we need to pass to the function, we will combine our feature fields using a Spark SQL *struct* type.  This will make passing a long-list of features easier and minimize future changes should our feature count increase:
+# MAGIC %md それでは、UDFを使って予測を生成してみましょう。 UDFをSQL文の中で使用することも可能ですが、今回は関数に渡す必要のある特徴のリストが非常に長いため、Spark SQLの*struct*型を使用して特徴フィールドを結合します。 これにより、長い機能のリストを簡単に渡すことができ、機能数が増えても将来の変更を最小限に抑えることができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate DataFrame with Predictions
+# DBTITLE 1,予測値を含むデータフレームの生成
 output_path = '/mnt/kkbox/output_spark/'
 
 # get list of columns in dataframe
@@ -183,33 +183,33 @@ output = (
 
 # COMMAND ----------
 
-# MAGIC %md Notice in the cell above that we are writing our data to an output folder.  While we are able to use the *repartition()* method to ensure our data is written to a single file, we are not able to directly control the name of that file as it is generated here: 
+# MAGIC %md 上のセルでは、データを出力フォルダに書き込んでいることに注目してください。 *repartition()*メソッドを使用して、データが1つのファイルに書き込まれるようにすることはできますが、ここで生成されるファイルの名前を直接制御することはできません。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Output Folder Contents
+# DBTITLE 1,出力フォルダの内容を確認する
 display(
   dbutils.fs.ls(output_path)
        )
 
 # COMMAND ----------
 
-# MAGIC %md If naming the file something specific is important, we can use native Python functionality to rename the CSV output file after the fact:
+# MAGIC %md ファイル名が重要な場合は、Pythonのネイティブ機能を使って、CSV出力ファイルの名前を後から変更することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Rename Output File
+# DBTITLE 1,出力ファイルの名前変更
 for file in os.listdir('/dbfs'+output_path):
   if file[-4:]=='.csv':
     shutil.move('/dbfs'+output_path+file, '/dbfs'+output_path+'output.txt' )
 
 # COMMAND ----------
 
-# MAGIC %md Examining the contents of this file, we can see it is identical to the content generated earlier, though the sort order of the customers may differ (as sorting was not specified in either step):
+# MAGIC %md このファイルの内容を見てみると、先に生成した内容と同じですが、顧客のソート順は異なるかもしれません（どちらのステップでもソートは指定されていないため）。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Output File Contents
+# DBTITLE 1,出力ファイルの内容を確認する
 print(
   dbutils.fs.head(output_path+'output.txt')
   )
