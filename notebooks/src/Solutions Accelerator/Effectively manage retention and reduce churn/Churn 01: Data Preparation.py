@@ -160,7 +160,7 @@ if not skip_reload:
 # COMMAND ----------
 
 # DBTITLE 1,Load User Logs Table
- Tableif not skip_reload:
+if not skip_reload:
   # delete the old table if needed
   _ = spark.sql('DROP TABLE IF EXISTS kkbox.user_logs')
 
@@ -931,3 +931,7 @@ _ = spark.sql('CREATE TABLE kkbox.dates USING DELTA AS SELECT * FROM dates')
 
 # display SQL table content
 display(spark.table('kkbox.dates').orderBy('date'))
+
+# COMMAND ----------
+
+
