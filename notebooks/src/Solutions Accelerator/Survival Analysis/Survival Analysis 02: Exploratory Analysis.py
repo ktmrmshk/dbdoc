@@ -1,27 +1,27 @@
 # Databricks notebook source
-# MAGIC %md With our subscription data prepared, we can now begin examining patterns of customer attrition observed with the KKBox music service.  In this notebook, we'll get oriented to general patterns of customer dropout in preparation for the more detailed work taking place in the next notebook.
+# MAGIC %md 購読データを準備したので、KKBox音楽サービスで観察された顧客離脱のパターンを調べ始めます。 このノートでは、次のノートで行うより詳細な作業に備えて、顧客の離脱の一般的なパターンについて説明します。
 
 # COMMAND ----------
 
-# MAGIC %md **Note** This notebook has been revised as of July 20, 2020
+# MAGIC %md **注意** このノートは2020年7月20日に改訂されました。
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 1: Prepare the Environment
+# MAGIC %md ##ステップ1: 環境を整える
 # MAGIC 
-# MAGIC The techniques we'll use in this and subsequent notebooks come from the domain of [Survival Analysis](https://en.wikipedia.org/wiki/Survival_analysis#:~:text=Survival%20analysis%20is%20a%20branch,and%20failure%20in%20mechanical%20systems.). While there are several notebooks available in Python that support these techniques, we'll leverage [lifelines](https://lifelines.readthedocs.io/en/latest/Survival%20Regression.html), the most popular of the survival analysis libraries currently available.  To do this, we'll first need to install and load the library to our cluster:
+# MAGIC このノートブックとその後のノートブックで使用するテクニックは、[生存分析](https://en.wikipedia.org/wiki/Survival_analysis#:~:text=Survival%20analysis%20is%20a%20branch,and%20failure%20in%20meical%20systems.)の領域から来ています。これらの技術をサポートするPythonのノートブックはいくつかありますが、ここでは、現在利用可能な生存分析ライブラリの中で最も人気のある[lifelines](https://lifelines.readthedocs.io/en/latest/Survival%20Regression.html)を利用します。 そのためには、まず、ライブラリをインストールして、クラスタにロードする必要があります。
 # MAGIC 
-# MAGIC **NOTE** The next cell assumes you are running this notebook on a Databricks cluster that does not make use of the ML runtime.  If using an ML runtime, please follow these [alternative steps](https://docs.databricks.com/libraries.html#workspace-library) to load the lifelines library to your environment. 
+# MAGIC **注意** 次のセルでは、MLランタイムを使用していないDatabricksクラスタでこのノートブックを実行していることを想定しています。 MLランタイムを使用している場合は、以下の[代替手順](https://docs.databricks.com/libraries.html#workspace-library)に従ってlifelinesライブラリをお使いの環境にロードしてください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Install Needed Libraries
+# DBTITLE 1,必要なライブラリのインストール
 dbutils.library.installPyPI('lifelines')
 dbutils.library.restartPython()
 
 # COMMAND ----------
 
-# DBTITLE 1,Load Needed Libraries
+# DBTITLE 1,必要なライブラリの読み込み
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -32,51 +32,51 @@ from lifelines.statistics import pairwise_logrank_test
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 2: Examine Population-Level Survivorship
+# MAGIC %md ##ステップ2: 母集団レベルの生存率の調査
 # MAGIC 
-# MAGIC Using the full subscription dataset, we can take a look at how members dropout of the subscription service over time.  To do this, we will derive a [Kaplan-Meier curve](https://towardsdatascience.com/kaplan-meier-curves-c5768e349479#:~:text=The%20Kaplan%2DMeier%20estimator%20is,at%20a%20certain%20time%20interval.) which will identify the probability of survival at a point in time (in terms of days since subscription inception) using some simple statistical calculations derived from the observed data:
+# MAGIC サブスクリプションの全データセットを使って、メンバーが時間の経過とともにサブスクリプションサービスから脱落する様子を見てみましょう。 そのために、観測されたデータから簡単な統計計算を行って、ある時点（購読開始からの日数）での生存確率を特定する[Kaplan-Meier曲線](https://towardsdatascience.com/kaplan-meier-curves-c5768e349479#:~:text=The%20Kaplan%2DMeier%20estimator%20is,at%20%20a certaintime%20interval.)を導き出します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Subscription Data
+# DBTITLE 1,サブスクリプションデータの取得
 # retrieve subscription data to pandas DF
 subscriptions_pd = spark.table('kkbox.subscriptions').toPandas()
 subscriptions_pd.head()
 
 # COMMAND ----------
 
-# DBTITLE 1,Derive Survival Curve for Population
+# DBTITLE 1,人口に対する生存曲線の導出
 kmf = KaplanMeierFitter(alpha=0.05) # calculate a 95% confidence interval
 kmf.fit(subscriptions_pd['duration_days'], subscriptions_pd['churned'])
 
 # COMMAND ----------
 
-# MAGIC %md The output of the previous step tells us we fit the KM model using nearly 3.1 million subscription records of which about 1.3 million were still active as of April 1, 2017.  (The term *right-censored* tells us that the event of interest, *i.e.* churn, has not occurred within our observation window.)  Using this model, we can now calculate the median survival time for any given subscription:
+# MAGIC %md 前のステップの出力は、約310万件の購読レコードを使用してKMモデルをフィットさせたことを示していますが、そのうち約130万件は2017年4月1日の時点でまだアクティブでした。 (right-censored*という用語は、対象となるイベント、すなわち*i.e. * churn*が観測窓内で発生していないことを示しています)。 このモデルを使って、任意のサブスクリプションの生存時間の中央値を計算することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Calculate Median Survival Time
+# DBTITLE 1,生存時間の中央値の算出
 median_ = kmf.median_survival_time_
 median_
 
 # COMMAND ----------
 
-# MAGIC %md Per documentation associated with the dataset, KKBox members typically subscribe to the service on a 30-day cycle. The median survival time of 184-days would indicate that most customers sign-up for an initial 30-day term and renew subscriptions month over month for 6-months on average before dropping out.
+# MAGIC %md データセットに添付されている資料によると、KKBoxのメンバーは通常30日周期でサービスに加入しています。生存期間の中央値である184日は、ほとんどのお客様が最初に30日の期間で登録し、平均して6ヶ月間、毎月購読を更新した後に退会することを示しています。
 # MAGIC 
-# MAGIC Passing the model various values that correspond with 30-day initial registration, a 1-year commitment, and a 2-year renewal, we can calculate the probability a customer continues with the service, *i.e.* survives past that point in time:
+# MAGIC モデルに、30日間の初期登録、1年間の契約、2年間の更新に対応するさまざまな値を渡すと、顧客がサービスを継続する、つまり*その時点を超えて生存する確率を計算することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Portion of Population Surviving at Point in Time
+# DBTITLE 1,ある時点で生存している人口の割合
 kmf.predict([30, 365, 730])
 
 # COMMAND ----------
 
-# MAGIC %md Graphing this out, we can see how customer drop-out varies as subscriptions age:
+# MAGIC %md これをグラフ化すると、お客様の離脱率が契約年数に応じてどのように変化するかがわかります。
 
 # COMMAND ----------
 
-# DBTITLE 1,The Survival Rate over Time
+# DBTITLE 1,時間経過による生存率
 # plot attributes
 plt.figure(figsize=(12,8))
 plt.title('All Subscriptions', fontsize='xx-large')
@@ -99,13 +99,13 @@ kmf.plot_survival_function()
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 3: Examine How Survivorship Varies
+# MAGIC %md ##ステップ3: 生存率の変化を調べる
 # MAGIC 
-# MAGIC The overall pattern of survivorship tells a pretty compelling story about customer attrition at KKBox, but it can be interesting to examine how this pattern varies by subscription attributes. By focusing on attributes of the subscription known at the time of its creation, we may be able to identify variables that tell us something about the long-term retention probability on an account at a time when we may be offering the greatest incentives to acquire a customer. With this in mind, we'll examine the registration channel associated with the subscription along with the initial payment method and payment plan days selected at initial registration:
+# MAGIC 生存率の全体的なパターンは、KKBoxにおける顧客の減少について非常に説得力のあるストーリーを語っていますが、このパターンがサブスクリプションの属性によってどのように変化するかを調べることは興味深いことです。契約時の属性に注目することで、顧客獲得のための最大のインセンティブを提供している時に、アカウントの長期的な維持確率を示す変数を特定することができるかもしれません。そこで、サブスクリプションに関連する登録チャネルと、初期登録時に選択された初期支払方法および支払プランの日数を調査します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Subscriptions with Initial Attributes
+# DBTITLE 1,初期属性を持つサブスクリプション
 # MAGIC %sql  -- identify registration channel, initial payment method and initial payment plan days by subscription
 # MAGIC DROP VIEW IF EXISTS subscription_attributes;
 # MAGIC 
@@ -149,7 +149,7 @@ kmf.plot_survival_function()
 
 # COMMAND ----------
 
-# DBTITLE 1,Subscriptions with Initial Attributes
+# DBTITLE 1,初期属性を持つサブスクリプション
 # capture output to Spark DataFrame
 subscriptions = spark.table('subscription_attributes')
 
@@ -159,11 +159,13 @@ subscriptions_pd.head()
 
 # COMMAND ----------
 
-# MAGIC %md With attributes now associated with our subscriptions, let's examine the registration channels by which customers subscribe to the service:
+# MAGIC %md 
+# MAGIC 属性がサブスクリプションに関連付けられたので、お客様がサービスを利用する際の登録経路を調べてみましょう。
+# MAGIC 初期属性を持つサブスクリプション
 
 # COMMAND ----------
 
-# DBTITLE 1,Members by Registration Channel
+# DBTITLE 1,登録チャネル別会員数
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -175,13 +177,13 @@ subscriptions_pd.head()
 
 # COMMAND ----------
 
-# MAGIC %md We don't know anything about the numbered channels but it's clear that channels 7 & 9 are the most popular by far.  Several other channels are pretty popular while there are a few which have a nominal number of subscribers associated with them. 
+# MAGIC %md 番号付きのチャンネルについては何もわかりませんが、チャンネル7と9が圧倒的に人気があることは明らかです。 他のいくつかのチャンネルも人気がありますが、わずかな数の加入者しかいないチャンネルもいくつかあります。
 # MAGIC 
-# MAGIC To keep our analysis simple, let's eliminate channels 13, 10 & 16 which combined are associated with less than 0.3% of our unique subscribers.  Doing this, we can now revisit our survival chart, presenting separate curves for each of the remaining channels:
+# MAGIC 分析をシンプルにするために、チャンネル13、10、16を除外してみましょう。これらのチャンネルは、合計してもユニークユーザー数の0.3%未満にしかなりません。 このようにして、残りのチャンネルごとに独立した曲線を表示して、生存曲線を再検討することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Survival Rate by Registration Channel
+# DBTITLE 1,登録チャネル別生存率
 # eliminate nominal channels
 channels_pd = subscriptions_pd[~subscriptions_pd['registered_via'].isin(['10','13','16'])]
 
@@ -211,31 +213,31 @@ for name, grouped_pd in channels_pd.groupby('registered_via'):
 
 # COMMAND ----------
 
-# MAGIC %md Before attempting to interpret these different curves, it's important we evaluate whether they are statistically different from one another.  Comparing each curve to the others, we can calculate the probability these curves do not differ from one another using the [log-rank test](https://en.wikipedia.org/wiki/Logrank_test):
+# MAGIC %md これらの異なる曲線を解釈しようとする前に、それらが統計的に異なるかどうかを評価することが重要です。 各曲線を他の曲線と比較すると、[log-rank test](https://en.wikipedia.org/wiki/Logrank_test)を使用して、これらの曲線が互いに異ならない確率を計算することができます。
 # MAGIC 
-# MAGIC **NOTE** By adding an argument for t_0 to the call below, you can calculate the same metrics for each curve at a specific point in time, instead of across all times as shown here.
+# MAGIC **注意** 以下の呼び出しにt_0の引数を追加することで、ここで示されているようにすべての時間に渡ってではなく、特定の時点で各曲線に対して同じメトリクスを計算することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Probability Curves Are the Same (Overall)
+# DBTITLE 1,確率曲線が同じになる（全体）
 log_rank = pairwise_logrank_test(channels_pd['duration_days'], channels_pd['registered_via'], channels_pd['churned'])
 log_rank.summary
 
 # COMMAND ----------
 
-# DBTITLE 1,Probability Curves Are the Same (at Day 184)
+# DBTITLE 1,確率曲線は同じ(184日目)
 log_rank = pairwise_logrank_test(channels_pd['duration_days'], channels_pd['registered_via'], channels_pd['churned'], t_0=184)
 log_rank.summary
 
 # COMMAND ----------
 
-# MAGIC %md Overall and specifically at day 184, the median survival date as identified above, most of these curves is significantly different from one another (as indicated by nearly all p-values being < 0.05). This tells us that the different representations in the chart above are meaningful.  But how?  Without additional information regarding the numbered channels, it's hard to tell a compelling story as to why some customers see higher attrition than others.  Still, KKBox may want to explore why some channels seem to have higher retention rates and examine differences in cost associated with each channel in order to maximize the effectiveness of their customer acquisition efforts.
+# MAGIC %md 全体的に見ても、特に上述の生存期間の中央値である184日目において、これらの曲線のほとんどが互いに有意に異なっています（ほぼすべてのp値が<0.05であることからもわかります）。このことから、上のグラフの異なる表現には意味があることがわかります。 しかし、どのようにして？ ナンバリングされたチャネルに関する追加情報がなければ、ある顧客が他の顧客よりも高い離脱率を示している理由について、説得力のあるストーリーを語ることは困難です。 しかし、KKBoxは、顧客獲得活動の効果を最大化するために、なぜあるチャネルがより高い定着率を持つように見えるのかを探り、各チャネルに関連するコストの違いを調べることをお勧めします。
 # MAGIC 
-# MAGIC Now, let's do this same analysis for the payment method used when the subscription was created:
+# MAGIC では、これと同じ分析を、サブスクリプションが作成されたときに使用された支払い方法について行ってみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Members by Initial Payment Method
+# DBTITLE 1,初回支払方法別会員数
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -247,11 +249,11 @@ log_rank.summary
 
 # COMMAND ----------
 
-# MAGIC %md The number of payment methods in the dataset is quite large.  Unlike with registration channels where there was a clear delineation between the popular and the unpopular channels, the decline in subscription counts with payment methods is more gradual.  With this in mind, we'll set an arbitrary cutoff of 10,000 members associated with a payment method for it to be included in our analysis:
+# MAGIC %md データセットに含まれる支払方法の数は非常に多い。 人気のあるチャンネルとそうでないチャンネルが明確に分かれていた登録チャンネルの場合とは異なり、支払い方法による購読数の減少はより緩やかです。 この点を考慮して、ある支払い方法に関連する会員数が10,000人という任意のカットオフ値を設定し、分析の対象とします。
 
 # COMMAND ----------
 
-# DBTITLE 1,Get Subscription Data for Those Associated with Popular Initial Payment Methods
+# DBTITLE 1,一般的な初期支払方法に関連するサブスクリプションデータを取得する
 payment_methods_pd = spark.sql('''
   SELECT
     duration_days,
@@ -268,7 +270,7 @@ payment_methods_pd = spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Survival Rate by Initial Payment Method
+# DBTITLE 1,初期支払方法別生存率
 # configure the plot
 plt.figure(figsize=(12,8))
 ax = plt.subplot(111)
@@ -296,30 +298,30 @@ for name, grouped_pd in payment_methods_pd.groupby('init_payment_method_id'):
 
 # COMMAND ----------
 
-# MAGIC %md Even when focusing just on the more popular methods, the chart above is quite a bit busier than the one before. This is a chart for which we should carefully consider the statistical differences between any two payment methods before drawing too many hard conclusions.  But in the interest of space, we'll interpret this chart now, addressing the pairwise statistical comparisons in the cell below.
+# MAGIC %md 人気のある決済方法だけを見ても、上のグラフは先ほどのグラフよりもかなり忙しくなっています。これは、2つの支払い方法の間の統計的な違いを慎重に検討してから、あまり難しい結論を出すべきチャートだと思います。 しかし、紙面の都合上、今はこのチャートを解釈し、下のセルにあるペアワイズの統計比較を取り上げます。
 # MAGIC 
-# MAGIC Without knowledge with which to speculate why, it's very interesting that some methods have very different drop-off rates.  For example, compare method 34 at the top of the chart and method 35 at the bottom.  Do these different payment methods indicate differences in ability to pay for a service over the long-term, *e.g.* credit cards associated with higher earners or those with higher credit scores *vs.* cards associated with lower earners or those with lower scores?  Alternatively, could some of these initial payment methods be tied to vouchers where the customer somehow is foregoing payment or receiving the service at a discount during an initial 30-day window.  When the customer is then asked to pay the regular price, the customer may be dropping out of the service as they weren't terribly invested in the service from the outset.  (It's important to remember we only know the initial payment method used and not subsequent payment methods employed, though that data is presumably in our transaction log dataset.) Again, without more business knowledge, we can only speculate, but given the large magnitude differences show here, this would be an aspect of customer acquisition worth exploring in more detail.
+# MAGIC 理由を推測する知識はありませんが、いくつかの方法でドロップオフ率が大きく異なるのは非常に興味深いことです。 例えば、グラフの一番上にある34番の方法と一番下にある35番の方法を比較してみましょう。 このような支払い方法の違いは、長期的な支払い能力の違いを示しているのでしょうか。例えば、クレジットカードは高所得者やクレジットスコアの高い人に、カードは低所得者やクレジットスコアの低い人に、というように。 あるいは、これらの初期支払方法のいくつかは、最初の30日間、お客様が何らかの方法で支払いを放棄したり、割引価格でサービスを受けたりするクーポン券に結びつけることもできます。 その後、通常価格でのお支払いをお願いした場合、お客様は最初からサービスに大きな投資をしていなかったため、サービスをやめてしまう可能性があります。 (ここで重要なのは、私たちが知っているのは最初に使われた支払い方法だけで、その後に使われた支払い方法は知らないということです。） 繰り返しになりますが、ビジネスに関する知識がなければ、推測することしかできません。しかし、ここで示された大きな違いを考えると、これは顧客獲得の一側面として、より詳細に調査する価値があるでしょう。
 # MAGIC 
-# MAGIC Here is the pairwise comparison, limited to those curves that don't quite differ enough from one another to be considered statistically different:
+# MAGIC ここでは、統計的に異なると考えられるほどの差がない曲線に限定して、ペアワイズ比較を行っています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Probability Curves Are the Same
+# DBTITLE 1,確率曲線は同じ
 log_rank = pairwise_logrank_test(payment_methods_pd['duration_days'], payment_methods_pd['init_payment_method_id'], payment_methods_pd['churned'])
 summary = log_rank.summary
 summary[summary['p']>=0.05]
 
 # COMMAND ----------
 
-# MAGIC %md From the Log Rank test results, it would appear that payment methods 22 and 32 are statistically undifferentiated (as are 20 and 40). 
+# MAGIC %md Log Rank 検定の結果から、支払方法 22 と 32 は統計的に差がないことがわかります（20 と 40 も同様）。
 # MAGIC 
-# MAGIC Next, let's examine the days configured for the payment plan at the initiation of a subscription.  This is an odd attribute of the subscriptions as it could be viewed as either continuous or discrete. Let's treat it as descrete here to see how we might handle it in later analysis.
+# MAGIC 次に、サブスクリプションの開始時に支払いプランに設定された日数を調べてみましょう。 これは、連続的にも離散的にも見ることができる、奇妙なサブスクリプションの属性です。ここでは離散的に扱い、後の分析でどのように扱うかを考えてみましょう。
 # MAGIC 
-# MAGIC At this point, I assume the pattern for this analysis is familiar:
+# MAGIC この時点で、この分析のパターンはおなじみだと思います。
 
 # COMMAND ----------
 
-# DBTITLE 1,Members by Initial Payment Plan Days
+# DBTITLE 1,初回支払いプラン日数別のメンバー
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -331,7 +333,7 @@ summary[summary['p']>=0.05]
 
 # COMMAND ----------
 
-# DBTITLE 1,Plot Popular Initial Payment Play Days
+# DBTITLE 1,プロット 人気 初期費用 プレイ日数
 payment_plan_days_pd = spark.sql('''
   SELECT
     duration_days,
@@ -370,9 +372,9 @@ for name, grouped_pd in payment_plan_days_pd.groupby('init_payment_plan_days'):
 
 # COMMAND ----------
 
-# MAGIC %md It appears as if most customers make it to their first renewal and then there is a sizeable drop. Not every plan sees the same rate of drop-out at that time with the 7-day and 10-days plans having massive drop-out at the first renewal compared to the 30-day plan which KKBox indicates is the traditional plan. Also interesting is that the 100-day plan sees a steep drop in customers at it's first renewal point (with it's survival rate following below that of the 30-day subscribers) while the 90-day subscribers follow a very different trajectory until later in the subscription lifecycle.
+# MAGIC %md ほとんどのお客様が1回目の更新時に大きく脱落しているように見えます。KKBoxが従来のプランとしている30日プランに比べて、7日プランと10日プランでは初回更新時に大幅な落ち込みが見られるなど、すべてのプランで同じ落ち込み率ではない。また、興味深いのは、100日プランでは最初の更新時に顧客数が急減している（生存率は30日プランの顧客数を下回る）のに対し、90日プランの顧客は契約ライフサイクルの後半まで全く異なる軌跡をたどっていることだ。
 # MAGIC 
-# MAGIC While the confidence intervals on these curves are more visible than some of the earlier ones, statistically, all the curves are significant:
+# MAGIC これらの曲線の信頼区間は、初期のものよりもはっきりしていますが、統計的には、すべての曲線が有意です。
 
 # COMMAND ----------
 
@@ -383,11 +385,11 @@ summary[summary['p']>=0.05]
 
 # COMMAND ----------
 
-# MAGIC %md Lastly, let's consider whether subscribers who previously churned might follow different paths from those who have only had a single subscription:
+# MAGIC %md 最後に、過去に解約したことのある加入者が、1回しか加入したことのない加入者とは異なる経路をたどる可能性について考えてみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Plot Prior Subscription Count
+# DBTITLE 1,プロットの先行予約数
 plt.figure(figsize=(12,8))
 ax = plt.subplot(111)
 plt.title('By Prior Subscription Count', fontsize='xx-large')
@@ -417,4 +419,4 @@ summary[summary['p']>=0.05]
 
 # COMMAND ----------
 
-# MAGIC %md  As the number of prior subscription increases, the number of subscribers falling into each category declines leading to larger and larger confidence intervals. There does appear to be a general pattern of subscribers with a few prior subscriptions being retained at higher rates but only up to a point.  And then it appears the number of priors doesn't really offer any protection from drop-out.  The lack of statistical significance would encourage us not to put too much emphasis on this narrative but still it might be interesting for KKBox to examine.
+# MAGIC %md 過去の契約数が増加するにつれて、各カテゴリーに該当する加入者の数は減少し、信頼区間はますます大きくなる。過去の契約数が少ない加入者は高い割合で維持されるという一般的なパターンがあるように見えるが、それもある時点までの話である。 しかし、それはある時点までのことであり、その後は予備知識の数がドロップアウトからの保護にはならないようです。 統計的に有意ではないので、この物語をあまり重視しない方が良いと思いますが、それでもKKBoxでは興味深い調査ができるかもしれません。
