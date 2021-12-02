@@ -17,13 +17,17 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Load Needed Libraries
+# MAGIC %fs mount s3a://databricks-ktmr-s3/kkbox /mnt/kkbox
+
+# COMMAND ----------
+
+# DBTITLE 1,必要なライブラリの読み込み
 import shutil
 from pyspark.sql.types import *
 
 # COMMAND ----------
 
-# DBTITLE 1,Drop Old Database Objects
+# DBTITLE 1,古いデータベースオブジェクトの削除
 # delete the old database and tables if needed
 _ = spark.sql('DROP DATABASE IF EXISTS kkbox CASCADE')
 
@@ -32,13 +36,13 @@ shutil.rmtree('/dbfs/mnt/kkbox/silver', ignore_errors=True)
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Database to Hold Data
+# DBTITLE 1,データを格納するデータベースの作成
 # create database to house SQL tables
 _ = spark.sql('CREATE DATABASE kkbox')
 
 # COMMAND ----------
 
-# DBTITLE 1,Prep Transactions Dataset
+# DBTITLE 1,トランザクションデータの準備
 # transaction dataset schema
 transaction_schema = StructType([
   StructField('msno', StringType()),
@@ -82,7 +86,7 @@ spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Prep Members Dataset
+# DBTITLE 1,Membersデータセットの準備
 # members dataset schema
 member_schema = StructType([
   StructField('msno', StringType()),
@@ -123,15 +127,15 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 2: Construct Membership Event Dataset
+# MAGIC %md ##Step 2: メンバーシップイベントデータセットの構築
 # MAGIC 
-# MAGIC With the data now loaded into a more accessible format, let's begin constructing subscription lifespan information.  To do this, we need to examine the membership-relevant information contained in the transaction logs. As is typical of many applications, the transaction log data records quite a bit more information than just subscription updates.  We'll need to weed out entries that are not relevant to our analysis and begin stitching together a picture of changes to subscriptions that indicate when a customer joined, how the subscription changed over time, and ultimately when a customer abandoned the subscription, should that event have transpired.
+# MAGIC データがよりアクセスしやすい形式に読み込まれたので、サブスクリプションの寿命情報の構築を開始しましょう。 そのためには、トランザクション・ログに含まれるメンバーシップ関連の情報を調査する必要があります。多くのアプリケーションでよく見られるように、トランザクション・ログ・データには、サブスクリプションの更新以外にも多くの情報が記録されています。 分析に関係のないエントリを除外し、顧客がいつ加入したのか、加入内容が時間の経過とともにどのように変化したのか、そして最終的に顧客がいつ加入を解消したのかを示す加入内容の変化の画像をつなぎ合わせる必要があります（そのようなイベントが発生した場合）。
 # MAGIC 
-# MAGIC Given some limitations of the dataset and some quirks of the KKBox business model addressed in the Kaggle challenge documentation, this process is quite involved.  To assist us in developing the logic required, let's narrow our focus to one customer, *msno = WAMleIuG124oDSSdhcZIECwLcHHHbk4or0y6gxkK7t8=*, examining the transaction log information associated with this person:
+# MAGIC データセットの制限や、Kaggleチャレンジのドキュメントに記載されているKKBoxのビジネスモデルの特徴を考慮すると、このプロセスはかなり複雑です。 必要なロジックを開発するために、1人の顧客、*msno = WAMleIuG124oDSSdhcZIECwLcHHbk4or0y6gxkK7t8=*に焦点を絞り、この人物に関連するトランザクションログ情報を調べてみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Transaction History
+# DBTITLE 1,トランザクション履歴
 # MAGIC %sql  -- all transactions for customer msno WAMleIuG124oDSSdhcZIECwLcHHHbk4or0y6gxkK7t8=
 # MAGIC 
 # MAGIC SELECT *
@@ -141,14 +145,14 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md The transaction log is quite busy, often with multiple entries recorded on given transaction date (*transaction_date*) as can be observed for this customer on several dates including 
-# MAGIC 2016-09-25. Based on documentation and the analysis of others who have used this dataset, we might consider records with a value of zero or less for payment plan days (*payment_plan_days*) as not relevant for our analysis.  This still leaves a lot of entries in the log for a given transaction date. 
+# MAGIC %md トランザクションログは非常に忙しく、特定のトランザクション日(*transaction_date*)に複数のエントリが記録されていることが多く、このお客様の場合、以下のようないくつかの日付で観察できます。
+# MAGIC 2016-09-25. 文書や、このデータセットを使用した他の人の分析に基づいて、支払いプランの日数(*payment_plan_days*)の値が0以下のレコードは、分析には関係ないと考えることができます。 これでも、ある取引日のログにはたくさんのエントリが残っています。
 # MAGIC 
-# MAGIC Looking a little more closely at the transaction entries on a given date, it appears many are changing the subscription's expiration date (*membership_expire_date*).  There is no way to determine which is the *final* entry for a given date as the time part of the transaction date field is truncated. Given this limitation, we'll make the assumption that the expiration date furthest into the future on a given transaction date is the expiration date on the account at that point in time.  While this may not be a perfectly valid assumption, it appears that subscription change events trigger follow up transactions on later transaction dates and the expiration date associated with these seems to be more stable.  So while we may not have the information exactly right on a given transaction date, we can still get an accurate understanding of the expiration date as we look over the range of entries associated with the account:
+# MAGIC ある日付のトランザクションエントリをもう少し詳しく見てみると、多くはサブスクリプションの有効期限(*membership_expire_date*)を変更しているようです。 トランザクションの日付フィールドの時間部分が切り捨てられているため、どのエントリーが特定の日付の*最終*エントリーなのかを判断する方法はありません。このような制限があるため、ここでは、ある取引日の最も遠い未来の有効期限が、その時点でのアカウントの有効期限であると仮定します。 これは完全に有効な仮定ではないかもしれませんが、サブスクリプションの変更イベントは、後の取引日にフォローアップのトランザクションを引き起こし、これらに関連する有効期限はより安定しているように思われます。 つまり、ある取引日に正確な情報が得られなくても、アカウントに関連するエントリーの範囲を見ることで、有効期限を正確に理解することができるのです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Condensed Transaction History
+# DBTITLE 1,トランザクション履歴の要約
 # MAGIC %sql  -- drop payment_plan_days of zero or less
 # MAGIC       --   and select largest exp date on a trans date  
 # MAGIC 
@@ -166,13 +170,13 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md Examining the more condensed transaction history for this customer, we can see another quirk in the data occurring on Deceber 24, 2015 (*trans_at = 2015-12-24*). On this date, the expiration date on the account is reset to a date that occurs prior to subscription initiation.  The next transaction date, the account is reset to a future date.
+# MAGIC %md このお客様のより詳細な取引履歴を確認すると、2015年12月24日に発生したデータに別の奇妙な現象が見られます（*trans_at = 2015-12-24*）。この日、アカウントの有効期限は、サブスクリプション開始前に発生する日付にリセットされています。 次の取引日には、アカウントは未来の日付にリセットされています。
 # MAGIC 
-# MAGIC The backdated record is likely due to some kind of subscription management activity such as a change in auto-renewal status or the like.  Regardless of the reason, it's clear the backdated value should not be considered for churn identification purposes.  Instead, we might simply add logic so that if a backdated expiration date appears in the log, it is reset to the transaction date with which it is associated:
+# MAGIC 過去に遡って記録されるのは、自動更新ステータスの変更など、何らかのサブスクリプション管理活動が原因と考えられます。 理由が何であれ、過去にさかのぼって記録された値を解約識別の目的で考慮すべきではないことは明らかです。 代わりに、過去に遡った有効期限がログに表示された場合、それが関連付けられているトランザクションの日付にリセットされるようなロジックを追加することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Corrected, Condensed Transaction History
+# DBTITLE 1,トランザクション履歴の修正
 # MAGIC %sql  -- correct expiration dates that have been backdated
 # MAGIC 
 # MAGIC SELECT
@@ -198,13 +202,13 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md Finally, we must note that the overall transaction dataset terminates on March 31, 2017.  In that regard, we are observing the transaction history backward from an *effective current date* of April 1, 2017.
+# MAGIC %md 最後に、全体の取引データセットが2017年3月31日に終了することに注意しなければなりません。 この点に関して、我々は2017年4月1日の*有効な現在の日付*から逆算して取引履歴を観察しています。
 # MAGIC 
-# MAGIC In the Kaggle challenge documentation associated with this dataset, KKBox explains that customers should not be considered as having churned until 30-days have passed since a subscription's expiration with no changes to the account that push the expiration date forward.  With this in mind, we need to place a dummy entry into the transaction dataset for April 1, 2017 that will prevent us from considering accounts that have not yet completed the 30-day expiration window as churned.  To fully understand the effect of this entry, you'll need to take a look at how we identify churn in the next section of this notebook:
+# MAGIC このデータセットに関連するKaggleチャレンジのドキュメントで、KKBoxは、サブスクリプションの有効期限から30日が経過し、有効期限を前倒しするようなアカウントへの変更がない限り、顧客が解約したと考えるべきではないと説明しています。 この点を考慮して、2017年4月1日のトランザクションデータセットにダミーのエントリを入れて、30日間の有効期限がまだ完了していないアカウントを解約したとみなさないようにする必要があります。 このエントリの効果を完全に理解するには、このノートブックの次のセクションで解約を特定する方法を見てみる必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Add Dummy Transactions (for Apr 1, 2017)
+# DBTITLE 1,ダミー取引の追加（2017年4月1日分）
 # MAGIC %sql  -- add dummy transaction entries for 2017-04-01 to prevent misclassification of churn in subsequent steps 
 # MAGIC 
 # MAGIC SELECT
@@ -236,9 +240,9 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 3: Identify Churn Events
+# MAGIC %md ##ステップ3：解約イベントの特定
 # MAGIC 
-# MAGIC We now have a relatively clean history of membership-relevant events for this customer. This will allow us to compare each transaction to its immediately preceding transaction to see if it resulted in a new expiration date being set.  Such events may represent subscription renewals or extensions:
+# MAGIC これで、このお客様の会員関連イベントの履歴が比較的きれいに残りました。これにより、各トランザクションを直前のトランザクションと比較して、新しい有効期限が設定されたかどうかを確認することができます。 このようなイベントは、サブスクリプションの更新や延長を表している可能性があります。
 
 # COMMAND ----------
 
@@ -287,13 +291,13 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md If we narrow our focus to just the meaningful membership events, we can now examine the days between the previous expiration date and the current transaction date (where the expiration date is pushed forward).  If more than 30 days has passed since expiration without a meaningful transaction, *i.e.* one that moves the expiration date forward, we would consider that churn has taken place.  
+# MAGIC %md 意義のある会員イベントだけに焦点を絞ると、前回の有効期限と今回の取引日（有効期限が前倒しされた場合）の間の日数を調べることができます。 有効期限から30日以上経過しても、意味のある取引（例：有効期限を前倒しする取引）がない場合、解約が発生したと考えられます。 
 # MAGIC 
-# MAGIC Of course, this calculation depends on a transaction having been recorded after the expiration date.  With many accounts, customers appear to have walked away for 6-months to a year to then renew their account.  In these scenarios, a churn event would be recorded with the subsequent activation forming a new potential chain of meaningful membership events.  In situations where no subsequent transactions occur, our dummy records inserted for April 1, 2017 will ensure we can correctly identify a churn event as having taken place:
+# MAGIC もちろん、この計算は、有効期限後にトランザクションが記録されていることが前提となります。 多くのアカウントでは、お客様が6ヶ月から1年の間離れていて、その後アカウントを更新しているように見えます。 このようなケースでは、解約イベントが記録され、その後のアクティベーションによって新たな会員イベントの連鎖が形成される可能性があります。 後続のトランザクションが発生しない状況では、2017 年 4 月 1 日に挿入されたダミーレコードによって、解約イベントが発生したことを正しく認識することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Add Churned Flag
+# DBTITLE 1,Churned Flagの追加
 # MAGIC %sql  -- identify churn events as those there the next transaction is 30+ days from prior expiration date
 # MAGIC 
 # MAGIC WITH trans AS (  
@@ -352,11 +356,11 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md Notice in the results that the downstream transaction, whether a resubscription or simply a dummy transaction, is the one flagged as being associated with the churn.  Pulling the flags back one transaction date associates the flag with the event where we'd intuitively understand churn to have occurred:
+# MAGIC %md 結果を見ると、下流のトランザクションが、再申し込みであれ、単なるダミーのトランザクションであれ、解約に関連するものとしてフラグが立てられていることに気づきます。 フラグを1つのトランザクションの日付に戻すことで、フラグが、解約が発生したと直感的に理解できるイベントに関連付けられます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Position Churned Flag Appropriately
+# DBTITLE 1,Churnフラグを適切に配置
 # MAGIC %sql -- move churn flag to prior transaction record
 # MAGIC 
 # MAGIC WITH trans AS ( 
@@ -421,11 +425,11 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md This now leaves our dummy transaction records as having a NULL flag value.  By removing these, we now have an accurate subscription history log for our customer:
+# MAGIC %md これにより、ダミーのトランザクション・レコードにはNULLフラグの値が残ります。 これらを削除することで、顧客の正確な購読履歴ログが得られます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Remove Dummy Transactions
+# DBTITLE 1,ダミートランザクションの削除
 # MAGIC %sql  -- remove the dummy transactions added earlier
 # MAGIC 
 # MAGIC WITH trans AS (  
@@ -494,11 +498,11 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md Let's remove the customer-specific constraint, clean up our final SELECT-list and convert our query to a view to make its use across all customer subscriptions a little easier going forward:
+# MAGIC %md 顧客固有の制約を取り除き、最後のSELECTリストを整理し、クエリをビューに変換して、すべての顧客のサブスクリプションでの使用を少しでも容易にしましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Convert to View for Reuse
+# DBTITLE 1,ビューに変換して再利用
 # MAGIC %sql  -- create view from query (with customer-filter removed)
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS kkbox.membership_history;
@@ -575,11 +579,11 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md And now we can explore all customer's history of subscription activations, expirations and renewals:
+# MAGIC %md すべてのお客様のサブスクリプションの有効化、期限切れ、更新の履歴を調べることができるようになりました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Membership Change History for All Members
+# DBTITLE 1,全会員のメンバーシップ変更履歴
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT *
@@ -587,13 +591,13 @@ spark.sql('''
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 4: Derive Subscription Info
+# MAGIC %md ##ステップ4: 購読情報の抽出
 # MAGIC 
-# MAGIC Now that we have our membership history assembled and flagged for churn events, we can assemble a subscription dataset.  This dataset should have one entry per customer for each subscription.  A subscription will be identified as having ended on the earliest churn event that is on or after a given transaction date.  It will be identified as having started on the earliest transaction associated with that date. A single customer (as identified by the *msno* value) may have multiple subscriptions, though only one would be active at a given time:
+# MAGIC メンバーシップの履歴が集まり、解約イベントのフラグが立ったので、サブスクリプションのデータセットを作成します。 このデータセットには、各サブスクリプションについて顧客ごとに1つのエントリが必要です。 サブスクリプションは、特定の取引日以降に発生した最も古い解約イベントで終了したと識別されます。 また、その日に関連する最も古い取引で開始されたと識別される。1人の顧客（*msno*値で識別される）は、複数のサブスクリプションを持つことができるが、ある時点でアクティブなのは1つだけである。
 
 # COMMAND ----------
 
-# DBTITLE 1,Subscription History View
+# DBTITLE 1,サブスクリプション履歴のview
 # MAGIC %sql
 # MAGIC DROP TABLE IF EXISTS kkbox.subscriptions;
 # MAGIC 
@@ -639,7 +643,7 @@ spark.sql('''
 
 # COMMAND ----------
 
-# DBTITLE 1,Subscription History
+# DBTITLE 1,サブスクリプション履歴
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT *
