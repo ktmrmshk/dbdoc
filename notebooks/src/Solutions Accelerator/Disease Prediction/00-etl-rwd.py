@@ -2,13 +2,13 @@
 # MAGIC %md
 # MAGIC ##<img src="https://databricks.com/wp-content/themes/databricks/assets/images/header_logo_2x.png" alt="logo" width="150"/> 
 # MAGIC 
-# MAGIC # EHR Data Analysis
+# MAGIC # EHRデータ分析
 # MAGIC ## 1. ETL
 # MAGIC 
 # MAGIC <ol>
-# MAGIC   <li> **Data**: We use a realistic simulation of patient EHR data using **[synthea](https://github.com/synthetichealth/synthea)**, for ~10,000 patients in Massachusetts </li>
-# MAGIC   <li> **Ingestion and De-identification**: We use **pyspark** to read data from csv files, de-identify patient PII and write to Delta Lake</li>
-# MAGIC   <li> **Database creation**: We then use delta tables to create a database of pateint recprds for subsequent data analysis</li>
+# MAGIC   <li> **データ**。マサチューセッツ州の約10,000人の患者について、**[synthea](https://github.com/synthetichealth/synthea)**を用いた患者のEHRデータの現実的なシミュレーションを使用しています</li>
+# MAGIC   <li> **Ingestion and De-identification**: 我々は**pyspark**を使用してcsvファイルからデータを読み込み、患者のPIIを非識別化し、Delta Lakeに書き込んでいる</li>。
+# MAGIC   <li> **データベースの作成**: その後、デルタテーブルを使用して、後続のデータ分析のために、患者の記録のデータベースを作成する</li>
 # MAGIC </ol>
 # MAGIC <div style="text-align: center; line-height: 0; padding-top: 9px;">
 # MAGIC <img src="https://amir-hls.s3.us-east-2.amazonaws.com/public/rwe-uap.png" width=700>
@@ -18,18 +18,18 @@
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ## 1. Ingest data into Spark dataframes
+# MAGIC ## 1. データをSparkのデータフレームに取り込む
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Libraries and list csv files to download
+# DBTITLE 1,ライブラリのインポートとダウンロードするcsvファイルの一覧表示
 from pyspark.sql import functions as F, Window
 ehr_path = '/databricks-datasets/rwe/ehr/csv'
 display(dbutils.fs.ls(ehr_path)) ## display list of files
 
 # COMMAND ----------
 
-# DBTITLE 1,Ingest all files into spark dataframes
+# DBTITLE 1,すべてのファイルをSparkデータフレームで取り込む
 # create a python dictionary of dataframes
 ehr_dfs = {}
 for path,name in [(f.path,f.name) for f in dbutils.fs.ls(ehr_path) if f.name !='README.txt']:
@@ -47,11 +47,11 @@ displayHTML(out_str)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ## 2. De-identify Patient PII
+# MAGIC ## 2. 患者のPIIを非識別化
 
 # COMMAND ----------
 
-# DBTITLE 1,Define an encryption function
+# DBTITLE 1,暗号化関数の定義
 from pyspark.sql.types import StringType, IntegerType, StructType, StructField
 import hashlib
 
@@ -63,7 +63,7 @@ encrypt_value_udf = udf(encrypt_value, StringType())
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply encryption to PII columns
+# DBTITLE 1,PIIカラムに暗号化を適用
 pii_cols=['SSN','DRIVERS','PASSPORT','PREFIX','FIRST','LAST','SUFFIX','MAIDEN','BIRTHPLACE','ADDRESS']
 patients_obfuscated = ehr_dfs['patients']
 
@@ -75,7 +75,7 @@ display(patients_obfuscated)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ## 3. Write tables to Delta Lake
+# MAGIC ## 3. デルタレイクにテーブルを書き込む
 
 # COMMAND ----------
 
@@ -123,7 +123,7 @@ dbutils.fs.rm(delta_root_path, recurse=True)
 
 # COMMAND ----------
 
-# DBTITLE 1,create a table containing all patient encounters and save to delta
+# DBTITLE 1,すべての患者の診察を含むテーブルを作成し、deltaに保存する
 patients = spark.read.format("delta").load(delta_root_path + '/patients').withColumnRenamed('Id', 'PATIENT')
 encounters = spark.read.format("delta").load(delta_root_path + '/encounters').withColumnRenamed('PROVIDER', 'ORGANIZATION')
 organizations = spark.read.format("delta").load(delta_root_path + '/organizations')
@@ -138,7 +138,7 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. Create database and tables
+# MAGIC ## 4. データベースとテーブルの作成
 
 # COMMAND ----------
 
@@ -195,7 +195,7 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC We can now use Delta's features for performance optimization. See this for more information see [ Delta Lake on Databricks ](https://docs.databricks.com/spark/latest/spark-sql/language-manual/optimize.html#optimize--delta-lake-on-databricks)
+# MAGIC Deltaの機能を使ってパフォーマンスの最適化ができるようになりました。詳しくは[ Delta Lake on Databricks ](https://docs.databricks.com/spark/latest/spark-sql/language-manual/optimize.html#optimize--delta-lake-on-databricks)をご覧ください。
 
 # COMMAND ----------
 
@@ -208,5 +208,9 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC We can set this ETL notebook [as a job](https://docs.databricks.com/jobs.html#create-a-job), that runs according to a given schedule.
-# MAGIC Now proceed we create dashboard for quick data visualization. In the next notebook (`./01-rwe-dashboard.R`) we create a simple dashboard in `R`
+# MAGIC このETLノートブックをジョブとして設定し(https://docs.databricks.com/jobs.html#create-a-job)、所定のスケジュールに従って実行することができます。
+# MAGIC 次に、データを素早く可視化するためのダッシュボードを作成します。次のノートブック(`./01-rwe-dashboard.R`)では、`R`でシンプルなダッシュボードを作成します。
+
+# COMMAND ----------
+
+
