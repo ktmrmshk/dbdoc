@@ -1,16 +1,16 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Predict the outcome of an encounter, given historic data
-# MAGIC ##<img src="https://databricks.com/wp-content/themes/databricks/assets/images/header_logo_2x.png" alt="logo" width="150"/> 
-# MAGIC In this notebook, we use RWD from simulated EHR, to predict whether a patient is at high risk of a certain condition of interest.
-# MAGIC Users of the notebook can choose the condition to model (default to drug overdose), a window of time to take into account for looking into patient's history (default to 90 days)
-# MAGIC and the max number of comorbidities to take into account. We then proceeed to use distributed ML with `spark` and [hyperopt](https://docs.databricks.com/applications/machine-learning/automl-hyperparam-tuning/index.html#hyperparameter-tuning-with-hyperopt) to train a model while leveraging [MLFlow](https://docs.databricks.com/applications/mlflow/index.html#mlflow) to manage the end-to-end life cycle.
+# MAGIC # 過去のデータをもとに出会いの結果を予測する
+# MAGIC ##<img src="https://databricks.com/wp-content/themes/databricks/assets/images/header_logo_2x.png" alt="logo" width="150"/>
+# MAGIC このノートブックでは、EHRをシミュレートしたRWDを使って、ある患者が特定の状態になるリスクが高いかどうかを予測します。
+# MAGIC このノートブックのユーザーは、モデル化する疾患（デフォルトは薬物過剰摂取）、患者の履歴を調べる際に考慮する時間のウィンドウ（デフォルトは90日）、最大の併存疾患数を選択できます。
+# MAGIC 考慮する併存疾患の最大数を設定します。次に、`spark`と[hyperopt](https://docs.databricks.com/applications/machine-learning/automl-hyperparam-tuning/index.html#hyperparameter-tuning-with-hyperopt)を使った分散型MLを使ってモデルを学習し、[MLFlow](https://docs.databricks.com/applications/mlflow/index.html#mlflow)を使ってエンドツーエンドのライフサイクルを管理することを提案します。
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## <div style="text-align: center; line-height: 0; padding-top: 9px;"> <img src="https://dbdb.io/media/logos/delta-lake.png" width=100></div>
-# MAGIC ## 0. Create a DeltaLake by calling the [Clinical Delta Lake](https://databricks.com/notebooks/00-etl-rwd.html) notebook 
+# MAGIC ## 0. [Clinical Delta Lake](https://databricks.com/notebooks/00-etl-rwd.html)ノートブックを呼び出してDeltaLakeを作成します。
 
 # COMMAND ----------
 
@@ -19,7 +19,7 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Specify paths and parameters
+# MAGIC ## 1. パスとパラメータの指定
 
 # COMMAND ----------
 
@@ -40,13 +40,15 @@ num_days_future=int(dbutils.widgets.get('num_days_future'))
 # DBTITLE 0,load data for training
 user=dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
 ## Specify the path to delta tables on dbfs
-delta_root_path = "dbfs:/home/{}/rwe-ehr/delta".format(user)
+#delta_root_path = "dbfs:/home/{}/rwe-ehr/delta".format(user)
+
+delta_root_path = "dbfs:/tmp/rwe-ehr/delta"
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Data preparation
-# MAGIC To create the training dataset, we need to extract a dataset of qualified patients.
+# MAGIC ## 2. データの準備
+# MAGIC トレーニングデータセットを作成するためには、対象となる患者のデータセットを抽出する必要があります。
 
 # COMMAND ----------
 
@@ -59,7 +61,7 @@ import mlflow
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ### 2.1 Load Tables
+# MAGIC ### 2.1 テーブルのロード
 
 # COMMAND ----------
 
@@ -70,7 +72,7 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Create a dataframe of all patient encounteres
+# MAGIC すべての患者のデータフレームを作成する
 
 # COMMAND ----------
 
@@ -85,7 +87,7 @@ display(patient_encounters.filter('REASONDESCRIPTION IS NOT NULL').limit(10))
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ### 2.2 Create a list of patients to include
+# MAGIC ### 2.2 対象となる患者のリストの作成
 
 # COMMAND ----------
 
@@ -95,7 +97,7 @@ all_patients=patient_encounters.select('PATIENT').dropDuplicates()
 
 # MAGIC %md
 # MAGIC 
-# MAGIC Get the list of patients with the target condition (cases) and those without the condition (controls) and combine the two lists.
+# MAGIC 対象となる疾患を持つ患者（症例）と、疾患を持たない患者（対照）のリストを入手し、2つのリストを組み合わせます。
 
 # COMMAND ----------
 
@@ -119,7 +121,7 @@ patients_to_study = positive_patients.union(negative_patients)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Now we limit encounters to patients under study. These patients have been selected to ensure we have a balanced set of cases and controls for our model training:
+# MAGIC ここでは、研究対象の患者に限定します。これらの患者は、モデルのトレーニングのために、症例と対照のバランスのとれたセットを確保するために選択されました。
 
 # COMMAND ----------
 
@@ -139,13 +141,14 @@ display(qualified_patient_encounters_df.limit(10))
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ## 3. Feature Engineering
-# MAGIC Now we want to add features representing patient's encounter history to the training data. 
+# MAGIC ## 3. 特徴量エンジニアリング
+# MAGIC 
+# MAGIC 次に、患者の診察履歴を表す特徴量を学習データに追加したいと思います。
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC First we need to identify most common comorbidities:
+# MAGIC まず、最も一般的な併存疾患を特定する必要があります。
 
 # COMMAND ----------
 
@@ -163,7 +166,7 @@ display(comorbid_conditions)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Next, we define a function that for every comborbid condition adds a binary feature indicating whether a given encounter was realted to the that condition.
+# MAGIC 次に、すべての共存条件に対して、ある出会いがその条件に該当するかどうかを示す二値特徴を追加する関数を定義します。
 
 # COMMAND ----------
 
@@ -185,7 +188,7 @@ def add_comorbidities(qualified_patient_encounters_df,comorbidity_list):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Finally, we to construct comborbidity features that capturing the number of times a patient has been diagnosed with any of the comorbid conditios within a given window of time.
+# MAGIC 最後に、患者が一定期間内にいずれかの併存疾患と診断された回数を捉える併存疾患特徴量を構築します。
 
 # COMMAND ----------
 
@@ -227,7 +230,7 @@ def add_recent_encounters(encounter_features):
 
 # MAGIC %md
 # MAGIC 
-# MAGIC Now we need to add the target labels, indicating which encounter falls within a given window of time (in the future) that would result the patient being diagnosed with the condition of interest. 
+# MAGIC 次に、ターゲットラベルを追加する必要があります。これは、どの出会いが、患者が関心のある状態と診断されることになる、与えられた時間の窓（将来）内に入るかを示すものです。
 
 # COMMAND ----------
 
@@ -260,7 +263,7 @@ def modify_features(encounter_features):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Now that we have defined functions to add required features and the label, we proceed to add these features
+# MAGIC 必要な機能を追加するための関数とラベルを定義したので、これらの機能を追加していきます。
 
 # COMMAND ----------
 
@@ -277,7 +280,7 @@ display(encounter_features)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Using mlflow tracking API we log notebook level parameters, which automatically also starts a new experiment run
+# MAGIC mlflowトラッキングAPIを使用して、ノートブックレベルのパラメータをログに記録し、自動的に新しい実験を開始します。
 
 # COMMAND ----------
 
@@ -287,7 +290,7 @@ mlflow.log_params({'condition':condition,'num_conditions':num_conditions,'num_da
 
 # MAGIC %md
 # MAGIC 
-# MAGIC Now we write these features into a feature store within Delta Lake. To ensure reproducibility, we add mlflow experiment id and the runid as a column to the the feature store. The advantage of this approach is that we receive more data, we can add new features to the featurestore that can be re-used to referred to in the future.
+# MAGIC これらの機能を Delta Lake 内の Feature Store に書き込みます。再現性を確保するために、mlflowの実験IDとrunidをフィーチャーストアのカラムに追加します。この方法の利点は、より多くのデータを得ることができるので、将来的に再利用したり参照したりすることができる新しい機能をフィーチャーストアに追加することができることです。
 
 # COMMAND ----------
 
@@ -304,8 +307,10 @@ run=mlflow.active_run()
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ## 4. Data QC and Pre-processing 
-# MAGIC Before moving to the next step, we need to make sure our dataset is not imbalanced
+# MAGIC 
+# MAGIC ## 4. データの品質管理と前処理 
+# MAGIC 次のステップに進む前に、データセットがアンバランスでないことを確認する必要があります。
+# MAGIC これらの機能を Delta Lake 内の Feature Store に書き込みます。再現性を確保するために、mlflowの実験IDとrunidをフィーチャーストアのカラムに追加します。この方法の利点は、より多くのデータを得ることができるので、将来的に再利用したり参照したりすることができる新しい機能をフィーチャーストアに追加することができることです。
 
 # COMMAND ----------
 
@@ -314,7 +319,7 @@ dataset_df = spark.read.format('delta').load(delta_root_path+'/encounter_feature
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Now let's take a look at the distribution of lables 
+# MAGIC では、lablesの分布を見てみましょう。
 
 # COMMAND ----------
 
@@ -324,7 +329,7 @@ display(dataset_df.groupBy('label').count())
 
 # MAGIC %md
 # MAGIC 
-# MAGIC We note that classes are imbalanced, so for downstream training we need to adjust the distribution of classes. Since we have enough data we choose to downsample the `0` class.
+# MAGIC クラスが不均衡なので，下流の学習のためにはクラスの分布を調整する必要があることに注意してください．十分なデータがあるので、`0`クラスをダウンサンプルすることにしました。
 
 # COMMAND ----------
 
@@ -355,8 +360,10 @@ def pre_process(training_dataset_pdf):
 
 # MAGIC %md
 # MAGIC ## <div style="text-align: left; line-height: 0; padding-top: 0px;"> <img src="https://secure.meetupstatic.com/photos/event/c/1/7/6/600_472189526.jpeg" width=100> + <img src="https://i.postimg.cc/TPmffWrp/hyperopt-new.png" width=40></div>
-# MAGIC ## 5. Model selection and hyperparameter tuning
-# MAGIC Before training the model, we would like to find the best set of parameters (judged based on the highest score)
+# MAGIC 
+# MAGIC ## 5. モデルの選択とハイパーパラメータの調整
+# MAGIC モデルを学習する前に，最適なパラメータセットを見つけたい（最も高いスコアで判断される）
+# MAGIC クラスが不均衡なので，下流の学習のためにはクラスの分布を調整する必要があることに注意してください．十分なデータがあるので、`0`クラスをダウンサンプルすることにしました。
 
 # COMMAND ----------
 
@@ -425,13 +432,13 @@ params_to_lr(best_params)
 
 # MAGIC %md
 # MAGIC ## <div style="text-align: left; line-height: 0; padding-top: 0px;"> <img src="https://secure.meetupstatic.com/photos/event/c/1/7/6/600_472189526.jpeg" width=100></div>
-# MAGIC ## 6. Model Training
-# MAGIC Train an optimized model and log the model with mlflow
+# MAGIC ## 6. モデルのトレーニング
+# MAGIC 最適化されたモデルをトレーニングし、mlflowでモデルをログ化します。
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 6.1 Train and log the model
+# MAGIC ### 6.1 モデルのトレーニングとロギング
 
 # COMMAND ----------
 
@@ -483,13 +490,13 @@ run_info=train(best_params)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ### 6.2 Register the model with MLflow model registry
+# MAGIC ### 6.2 MLflowモデルレジストリへのモデル登録
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC 
-# MAGIC Now you can registered the trained model in model registry (you can also use GUI for this)
+# MAGIC 学習したモデルをモデルレジストリに登録します（GUIでも可）。
 
 # COMMAND ----------
 
@@ -506,14 +513,14 @@ model_details
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Now you can take a look at the model registry and see the V1 of the model registered. 
+# MAGIC これで、モデルレジストリを見て、登録されているモデルのV1を確認することができます。
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC 
-# MAGIC ## 7. Load the model for scoring
-# MAGIC Now we can use the model to asses risk on new data
+# MAGIC ## 7. スコアリングのためにモデルを読み込む
+# MAGIC 新しいデータのリスクを評価するためにモデルを使うことができます。
 
 # COMMAND ----------
 
