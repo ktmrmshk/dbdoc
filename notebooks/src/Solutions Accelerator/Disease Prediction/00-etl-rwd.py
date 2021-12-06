@@ -6,9 +6,9 @@
 # MAGIC ## 1. ETL
 # MAGIC 
 # MAGIC <ol>
-# MAGIC   <li> **データ**。マサチューセッツ州の約10,000人の患者について、**[synthea](https://github.com/synthetichealth/synthea)**を用いた患者のEHRデータの現実的なシミュレーションを使用しています</li>
-# MAGIC   <li> **Ingestion and De-identification**: 我々は**pyspark**を使用してcsvファイルからデータを読み込み、患者のPIIを非識別化し、Delta Lakeに書き込んでいる</li>。
-# MAGIC   <li> **データベースの作成**: その後、デルタテーブルを使用して、後続のデータ分析のために、患者の記録のデータベースを作成する</li>
+# MAGIC   <li> **データ**。マサチューセッツ州の約10,000人の患者について、**[synthea](https://github.com/synthetichealth/synthea)**を用いた患者のEHR(Electronic Health Record, 電子医療記録)データの現実的なシミュレーションを使用しています</li>
+# MAGIC   <li> ** データの取り込み・非識別化(匿名化) **: **pyspark**を使用してcsvファイルからデータを読み込み、患者のPIIを非識別化し、Delta Lakeに書き込みます</li>
+# MAGIC   <li> **データベースの作成**: その後、デルタテーブルを使用して、後続のデータ分析のために、患者の記録のデータベースを作成します</li>
 # MAGIC </ol>
 # MAGIC <div style="text-align: center; line-height: 0; padding-top: 9px;">
 # MAGIC <img src="https://amir-hls.s3.us-east-2.amazonaws.com/public/rwe-uap.png" width=700>
@@ -51,7 +51,7 @@ displayHTML(out_str)
 
 # COMMAND ----------
 
-# DBTITLE 1,暗号化関数の定義
+# DBTITLE 1,匿名化関数の定義
 from pyspark.sql.types import StringType, IntegerType, StructType, StructField
 import hashlib
 
@@ -63,7 +63,7 @@ encrypt_value_udf = udf(encrypt_value, StringType())
 
 # COMMAND ----------
 
-# DBTITLE 1,PIIカラムに暗号化を適用
+# DBTITLE 1,PIIカラムに匿名化を適用
 pii_cols=['SSN','DRIVERS','PASSPORT','PREFIX','FIRST','LAST','SUFFIX','MAIDEN','BIRTHPLACE','ADDRESS']
 patients_obfuscated = ehr_dfs['patients']
 
@@ -194,6 +194,10 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 
 # COMMAND ----------
 
+# MAGIC %sql SELECT * FROM rwd.providers
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC Deltaの機能を使ってパフォーマンスの最適化ができるようになりました。詳しくは[ Delta Lake on Databricks ](https://docs.databricks.com/spark/latest/spark-sql/language-manual/optimize.html#optimize--delta-lake-on-databricks)をご覧ください。
 
@@ -210,7 +214,3 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 # MAGIC %md
 # MAGIC このETLノートブックをジョブとして設定し(https://docs.databricks.com/jobs.html#create-a-job)、所定のスケジュールに従って実行することができます。
 # MAGIC 次に、データを素早く可視化するためのダッシュボードを作成します。次のノートブック(`./01-rwe-dashboard.R`)では、`R`でシンプルなダッシュボードを作成します。
-
-# COMMAND ----------
-
-
