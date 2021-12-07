@@ -1,8 +1,8 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 過去のデータをもとに出会いの結果を予測する
+# MAGIC # 過去のデータをもとに問診の結果を予測する
 # MAGIC ##<img src="https://databricks.com/wp-content/themes/databricks/assets/images/header_logo_2x.png" alt="logo" width="150"/>
-# MAGIC このノートブックでは、EHRをシミュレートしたRWDを使って、ある患者が特定の状態になるリスクが高いかどうかを予測します。
+# MAGIC このノートブックでは、EHR(Electronic Health Record, 電子医療記録)をシミュレートしたRWD(Real World Data)を使って、ある患者が特定の状態になるリスクが高いかどうかを予測します。
 # MAGIC このノートブックのユーザーは、モデル化する疾患（デフォルトは薬物過剰摂取）、患者の履歴を調べる際に考慮する時間のウィンドウ（デフォルトは90日）、最大の併存疾患数を選択できます。
 # MAGIC 考慮する併存疾患の最大数を設定します。次に、`spark`と[hyperopt](https://docs.databricks.com/applications/machine-learning/automl-hyperparam-tuning/index.html#hyperparameter-tuning-with-hyperopt)を使った分散型MLを使ってモデルを学習し、[MLFlow](https://docs.databricks.com/applications/mlflow/index.html#mlflow)を使ってエンドツーエンドのライフサイクルを管理することを提案します。
 
@@ -71,8 +71,12 @@ organizations = spark.read.format("delta").load(delta_root_path + '/organization
 
 # COMMAND ----------
 
+display(encounters)
+
+# COMMAND ----------
+
 # MAGIC %md
-# MAGIC すべての患者のデータフレームを作成する
+# MAGIC すべての患者のデータフレームを作成する(テーブルの結合)
 
 # COMMAND ----------
 
@@ -166,7 +170,7 @@ display(comorbid_conditions)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 次に、すべての共存条件に対して、ある出会いがその条件に該当するかどうかを示す二値特徴を追加する関数を定義します。
+# MAGIC 次に、すべての共存条件に対して、ある問診がその条件に該当するかどうかを示す二値特徴を追加する関数を定義します。
 
 # COMMAND ----------
 
@@ -349,9 +353,10 @@ def pre_process(training_dataset_pdf):
   X_pdf=training_dataset_pdf.drop('label',axis=1)
   y_pdf=training_dataset_pdf['label']
 
-  onehotencoder = OneHotEncoder(handle_unknown='ignore')
-  one_hot_model = onehotencoder.fit(X_pdf.values)
-  X=one_hot_model.transform(X_pdf)
+  ohe = OneHotEncoder(handle_unknown='ignore')
+  #onehotencoder = OneHotEncoder(handle_unknown='ignore', categories=categories)
+  #one_hot_model = onehotencoder.fit(X_pdf.values)
+  X=ohe.fit_transform(X_pdf)
   y=y_pdf.values
 
   return(X,y)
@@ -496,7 +501,7 @@ run_info=train(best_params)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC 学習したモデルをモデルレジストリに登録します（GUIでも可）。
+# MAGIC 学習したモデルをモデルレジストリに登録します（GUIでも可）
 
 # COMMAND ----------
 
@@ -541,4 +546,16 @@ display(features_df.select('PATIENT','Enc_Id','START_TIME',clf_udf(*selected_fea
 
 # COMMAND ----------
 
-clf.predict(features_df.select(selected_features).toPandas())
+import mlflow
+logged_model = 'runs:/c43f026f80594e0580709cf27305d42d/drug-overdose'
+
+# Load model as a PyFuncModel.
+loaded_model = mlflow.pyfunc.load_model(logged_model)
+
+# Predict on a Pandas DataFrame.
+import pandas as pd
+loaded_model.predict(features_df.select(selected_features).toPandas().astype('U'))
+
+# COMMAND ----------
+
+
