@@ -52,18 +52,6 @@
 
 # COMMAND ----------
 
-# MAGIC %md ### 前準備(ライブラリのインストール)
-
-# COMMAND ----------
-
-# MAGIC %pip install pystan==2.19.1.1
-
-# COMMAND ----------
-
-# MAGIC %pip install FBProphet
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ### 前準備(データのダウンロード)
 # MAGIC 1. [Kaggle](https://www.kaggle.com/c/demand-forecasting-kernels-only/data)から ```train.csv``` をダウンロードする
@@ -75,18 +63,6 @@
 # MAGIC 
 # MAGIC 2. パスに「`/FileStore/tables/demand_forecast/train/`」を指定し、ダウンロードしたCSVをドラッグアンドドロップする
 # MAGIC ![](https://sajpstorage.blob.core.windows.net/notebook20210311-demand-forecast/Screen Shot 2021-03-11 at 21.06.04.png)
-
-# COMMAND ----------
-
-# # ライブラリのインポート(Databricks Runtimeの際に実行)
-# dbutils.library.installPyPI('FBProphet', version='0.5') # 最新バージョンはこちら: https://pypi.org/project/fbprophet/
-# dbutils.library.installPyPI('holidays','0.9.12') # fbprophet 0.5 のissueへの対応 https://github.com/facebook/prophet/issues/1293
-# dbutils.library.restartPython()
-
-# # Prophet を実行する際に出るメッセージを非表示にするオプション
-# import logging
-# logger = spark._jvm.org.apache.log4j
-# logging.getLogger("py4j").setLevel(logging.ERROR)
 
 # COMMAND ----------
 
@@ -370,7 +346,7 @@ import logging
 logging.getLogger('py4j').setLevel(logging.ERROR)
 
 # モデルの定義
-from fbprophet import Prophet
+from prophet import Prophet, serialize
 
 params = {
       "interval_width": 0.95,
@@ -415,20 +391,29 @@ aggregated_history_pd
 
 # COMMAND ----------
 
-# 過去のデータをモデルに学習させる
-model.fit(aggregated_history_pd)
+import mlflow
+def extract_params(pr_model):
+    return {attr: getattr(pr_model, attr) for attr in serialize.SIMPLE_ATTRIBUTES}
 
-# 過去のデータと先90日間を含むデータフレームを定義
-future_pd = model.make_future_dataframe(
-  periods=90, 
-  freq='d', 
-  include_history=True
-  )
+with mlflow.start_run():
+  # 過去のデータをモデルに学習させる
+  model.fit(aggregated_history_pd)
 
-# データセット全体に対して予測実行
-forecast_pd = model.predict(future_pd)
+  # 過去のデータと先90日間を含むデータフレームを定義
+  future_pd = model.make_future_dataframe(
+    periods=90, 
+    freq='d', 
+    include_history=True
+    )
 
-display(forecast_pd)
+  # データセット全体に対して予測実行
+  forecast_pd = model.predict(future_pd)
+  display(forecast_pd)
+
+  # MLflow tracking
+  params = {attr: getattr(model, attr) for attr in serialize.SIMPLE_ATTRIBUTES}
+  mlflow.log_params(params)
+  mlflow.prophet.log_model(model, "mymodel")
 
 # COMMAND ----------
 
@@ -672,6 +657,10 @@ results.createOrReplaceTempView('new_forecasts')
 
 # MAGIC %md
 # MAGIC 以下のクエリを発行することで、上記のモデリング・予測が実行されます。
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
