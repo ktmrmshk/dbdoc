@@ -209,4 +209,94 @@ display( df_joined )
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC select path from table_image_processed_result
 
+# COMMAND ----------
+
+# MAGIC %md ## Performance Test: image in delta vs image file
+
+# COMMAND ----------
+
+# MAGIC %md ### 1. from file each (file path)
+
+# COMMAND ----------
+
+img_filelist=[]
+img_filelist += dbutils.fs.ls('/databricks-datasets/flower_photos/daisy/')
+img_filelist += dbutils.fs.ls('/databricks-datasets/flower_photos/dandelion/')
+img_filelist += dbutils.fs.ls('/databricks-datasets/flower_photos/roses/')
+img_filelist += dbutils.fs.ls('/databricks-datasets/flower_photos/sunflowers/')
+img_filelist += dbutils.fs.ls('/databricks-datasets/flower_photos/tulips/')
+df = spark.createDataFrame(img_filelist)
+display(df)
+df.count()
+
+# COMMAND ----------
+
+@udf("width long, height long, mode string")
+def proc_image_from_path(image_path):
+  from PIL import Image
+  image_path = image_path.replace('dbfs:', '/dbfs')
+  im = Image.open(image_path)
+  return (im.width, im.height, im.mode)
+
+# COMMAND ----------
+
+display(
+df.withColumn('udf_ret', proc_image_from_path('path') )
+)
+
+# COMMAND ----------
+
+# MAGIC %md ### 2. from delta (image data in delta)
+
+# COMMAND ----------
+
+dbutils.fs.rm('/tmp/masahiko.kitamura@databricks.com/perftest', True)
+
+spark.conf.set("spark.sql.parquet.compression.codec", "uncompressed")
+(
+  spark
+  .read.format('binaryFile').load('/databricks-datasets/flower_photos/*/*.jpg')
+  .write.format('delta').save('/tmp/masahiko.kitamura@databricks.com/perftest/images.delta')
+)
+spark.conf.set("spark.sql.parquet.compression.codec", "snappy")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select count(1) from delta.`/tmp/masahiko.kitamura@databricks.com/perftest/images.delta`;
+
+# COMMAND ----------
+
+# UDFを定義(PILを使用して画像ファイルを開き、属性情報を抽出し、返す)
+@udf("width long, height long, mode string")
+def proc_image_from_delta(image_binary):
+  import io
+  from PIL import Image
+  f=io.BytesIO(image_binary)
+  im = Image.open(f)
+  return (im.width, im.height, im.mode)
+
+# COMMAND ----------
+
+df_delta = spark.read.format('delta').load('/tmp/masahiko.kitamura@databricks.com/perftest/images.delta')
+
+display(
+  df_delta.withColumn('udf_ret', proc_image_from_delta('content') )
+)
+
+# COMMAND ----------
+
+# MAGIC %md Optional) Optimize for file compaction
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SET spark.sql.parquet.compression.codec = uncompressed;
+# MAGIC OPTIMIZE delta.`/tmp/masahiko.kitamura@databricks.com/perftest/images.delta`;
+# MAGIC SET spark.databricks.delta.retentionDurationCheck.enabled = false;
+# MAGIC VACUUM "/tmp/masahiko.kitamura@databricks.com/perftest/images.delta" RETAIN 0 HOURS;
+# MAGIC SET spark.databricks.delta.retentionDurationCheck.enabled = true;
+# MAGIC SET spark.sql.parquet.compression.codec = snappy;
