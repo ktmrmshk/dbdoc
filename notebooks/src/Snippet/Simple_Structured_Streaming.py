@@ -334,17 +334,17 @@ df_raw = (
 
 # COMMAND ----------
 
-# DBTITLE 1,SQLを使った場合
-# クレンジング処理 + Join処理
-df_raw.createOrReplaceTempView('st_table_raw')
+from pyspark.sql.functions import *
 
-df_cleaned = sql('''
-SELECT 
-  *,
-  to_timestamp(Arrival_Time / 1000.0) as Arrival_ts
-FROM 
-  st_table_raw
-''')
+# クレンジング処理 + Join処理
+df_cleaned = (
+  df_raw
+  .withColumn('Arrival_ts', to_timestamp( col('Arrival_Time') / 1000.0 )  )
+  .withColumn('Creation_ts', to_timestamp( col('Creation_Time') / 1000000000.0 )  )
+
+  .select('Arrival_ts', 'Creation_ts', 'Device', 'Index', 'Model', 'User', 'gt', 'x', 'y', 'z')
+  .join(df_user, df_raw.User == df_user.user_id, "left_outer" )
+)
 
 # 書き込み
 ret_cleaned = (
@@ -359,15 +359,17 @@ ret_cleaned = (
 
 # COMMAND ----------
 
+# DBTITLE 1,SQLを使った場合
 # クレンジング処理 + Join処理
-df_cleaned = (
-  df_raw
-  .withColumn('Arrival_ts', to_timestamp( col('Arrival_Time') / 1000.0 )  )
-  .withColumn('Creation_ts', to_timestamp( col('Creation_Time') / 1000000000.0 )  )
+df_raw.createOrReplaceTempView('st_table_raw')
 
-  .select('Arrival_ts', 'Creation_ts', 'Device', 'Index', 'Model', 'User', 'gt', 'x', 'y', 'z')
-  .join(df_user, df_raw.User == df_user.user_id, "left_outer" )
-)
+df_cleaned = sql('''
+SELECT 
+  *,
+  to_timestamp(Arrival_Time / 1000.0) as Arrival_ts
+FROM 
+  st_table_raw
+''')
 
 # 書き込み
 ret_cleaned = (
@@ -489,6 +491,13 @@ spark.sql(f'''
 
 dbutils.fs.rm(base_path, True)
 spark.sql(f''' DROP DATABASE IF EXISTS `{db_name}` CASCADE; ''')
+
+# COMMAND ----------
+
+# DBTITLE 1,Streamingの停止
+ret_raw.stop()
+ret_cleaned.stop()
+ret_summary.stop()
 
 # COMMAND ----------
 
