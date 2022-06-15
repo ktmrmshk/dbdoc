@@ -1,14 +1,14 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to generate the features required for our segmentation work using a combination of feature engineering and dimension reduction techniques. This notebook has been developed on a Databricks ML 8.0 CPU-based cluster. 
+# MAGIC %md このノートブックの目的は、特徴工学と次元削減の技術を組み合わせて、セグメンテーション作業に必要な特徴を生成することです。このノートブックはDatabricks ML 8.0 CPUベースのクラスタ上で開発されました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Install Required Python Libraries
+# DBTITLE 1,必要なPythonライブラリのインストール
 # MAGIC %pip install dython
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,必要なライブラリのインポート
 from sklearn.preprocessing import quantile_transform
 
 import dython
@@ -22,21 +22,21 @@ import matplotlib.pyplot as plt
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 1: Derive Bases Features
+# MAGIC %md ## ステップ1：ベースとなる特徴の導出
 # MAGIC 
-# MAGIC With a stated goal of segmenting customer households based on their responsiveness to various promotional efforts, we start by calculating the number of purchase dates (*pdates\_*) and the volume of sales (*amount\_list_*) associated with each promotion item, alone and in combination with one another.  The promotional items considered are:
+# MAGIC 様々なプロモーションに対する反応性から顧客世帯をセグメント化することを目的として、まず、各プロモーション項目の単独および組み合わせによる購入日数（ *pdates_see* ）と販売量（ *amount_list_* ）を計算する。 対象となるプロモーションアイテムは以下の通り。
 # MAGIC 
-# MAGIC * Campaign targeted products (*campaign\_targeted_*)
-# MAGIC * Private label products (*private\_label_*)
-# MAGIC * InStore-discounted products (*instore\_discount_*)
-# MAGIC * Campaign (retailer-generated) coupon redemptions (*campaign\_coupon\_redemption_*)
-# MAGIC * Manufacturer-generated coupon redemptions (*manuf\_coupon\_redemption_*)
+# MAGIC キャンペーン対象製品（ *campaign_targeted_* ） ・プライベートブランド製品（ *private_label_* ） ・その他（ *campaign_targeted_* ）。
+# MAGIC * プライベートブランド製品（ *private_tica_label_* ）。
+# MAGIC * インストアディスカウント商品 ( *instore_discount_* )
+# MAGIC * キャンペーンクーポン ( *campaign_coupon_redemption_* )
+# MAGIC * Manufacturer-generated coupon redemption ( *manuf_coupon_redemption_* )
 # MAGIC 
-# MAGIC The resulting metrics are by no means exhaustive but provide a useful starting point for our analysis:
+# MAGIC この結果は、決して網羅的なものではありませんが、分析の出発点として有用なものです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Derive Relevant Metrics
+# DBTITLE 1,関連するメトリクスの導出
 # MAGIC %sql
 # MAGIC DROP VIEW IF EXISTS journey.household_metrics;
 # MAGIC 
@@ -119,13 +119,13 @@ import matplotlib.pyplot as plt
 
 # COMMAND ----------
 
-# MAGIC %md It is assumed that the households included in this dataset were selected based on a minimum level of activity spanning the 711 day period over which data is provided.  That said, different households demonstrate different levels of purchase frequency during his period as well as different levels of overall spend.  In order to normalize these values between households, we'll divide each metric by the total purchase dates or total list amount associated with that household over its available purchase history:
+# MAGIC %md このデータセットに含まれる世帯は、データ提供期間である711日間のうち、最低限の活動量に基づいて選択されているものと思われます。 しかし、世帯によって期間中の購入頻度や総消費額は異なります。 これらの値を世帯間で正規化するために、各指標を、その世帯の購入履歴に関連する購入日の合計またはリスト金額の合計で割ることにします。
 # MAGIC 
-# MAGIC **NOTE** Normalizing the data based on total purchase dates and spend as we do in this next step may not be appropriate in all analyses. 
+# MAGIC **注** この次のステップで行うように、総購入日および総消費額に基づいてデータを正規化することは、すべての分析において適切であるとは限りません。
 
 # COMMAND ----------
 
-# DBTITLE 1,Convert Metrics to Features
+# DBTITLE 1,メトリクスを特徴量に変換する
 # MAGIC %sql
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS journey.household_features;
@@ -171,11 +171,11 @@ import matplotlib.pyplot as plt
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 2: Examine Distributions
+# MAGIC %md ## ステップ2: 分布を調べる
 # MAGIC 
-# MAGIC Before proceeding, it's a good idea to examine our features closely to understand their compatibility with clustering techniques we might employ. In general, our preference would be to have standardized data with relatively normal distributions though that's not a hard requirement for every clustering algorithm.
+# MAGIC 先に進む前に、採用するクラスタリング手法との互換性を理解するために、特徴をよく調べることは良いアイデアです。一般的には、比較的正規の分布で標準化されたデータが望ましいのですが、すべてのクラスタリングアルゴリズムに対して難しい要件ではありません。
 # MAGIC 
-# MAGIC To help us examine data distributions, we'll pull our data into a pandas Dataframe.  If our data volume were too large for pandas, we might consider taking a random sample (using the [*sample()*](https://spark.apache.org/docs/latest/api/python/pyspark.sql.html#pyspark.sql.DataFrame.sample) against the Spark DataFrame) to examine the distributions:
+# MAGIC データの分布を調べるために、pandasのDataframeにデータを取り込みます。 もしデータ量が多くてpandasが使えない場合は、Spark DataFrameに対して[*sample()*](https://spark.apache.org/docs/latest/api/python/pyspark.sql.html#pyspark.sql.DataFrame.sample)を使ってランダムにサンプルを取って、分布を調べることもできます。
 
 # COMMAND ----------
 
@@ -194,11 +194,11 @@ household_features_pd.info()
 
 # COMMAND ----------
 
-# MAGIC %md Notice that we have elected to retrieve the *household_id* field with this dataset.  Unique identifiers such as this will not be passed into the data transformation and clustering work that follows but may be useful in helping us validate the results of that work. By retrieving this information with our features, we can now separate our features and the unique identifier into two separate pandas dataframes where instances in each can easily be reassociated leveraging a shared index value:
+# MAGIC %md このデータセットでは、*household_id* フィールドを取得することにしていることに注意してください。 このような一意な識別子は、この後のデータ変換やクラスタリング作業には渡されませんが、その結果を検証するのに役立つ可能性があります。この情報を特徴量で取得することで、特徴量と一意な識別子を2つの別々のpandasデータフレームに分離し、それぞれのインスタンスを共有インデックス値を利用して簡単に再関連付けできるようになりました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Separate Household ID from Features
+# DBTITLE 1,世帯IDと機能の分離
 # get household ids from dataframe
 households_pd = household_features_pd[['household_id']]
 
@@ -209,16 +209,16 @@ features_pd
 
 # COMMAND ----------
 
-# MAGIC %md Let's now start examining the structure of our features:
+# MAGIC %md それでは、特徴量の構成について検討を開始します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Summary Stats on Features
+# DBTITLE 1,特徴量の統計・概要
 features_pd.describe()
 
 # COMMAND ----------
 
-# MAGIC %md A quick review of the features finds that many have very low means and a large number of zero values (as indicated by the occurrence of zeros at multiple quantile positions).  We should take a closer look at the distribution of our features to make sure we don't have any data distribution problems that will trip us up later:
+# MAGIC %md 特徴量をざっと見てみると、平均値が非常に低く、ゼロ値が多いことがわかります（複数の分位点でゼロが発生していることでわかる）。 特徴量の分布を詳しく見て、後で困るようなデータ分布の問題がないことを確認する必要があります。
 
 # COMMAND ----------
 
@@ -248,15 +248,15 @@ for k in range(0,feature_count):
 
 # COMMAND ----------
 
-# MAGIC %md A quick visual inspection shows us that we have *zero-inflated distributions* associated with many of our features.  This is a common challenge when a feature attempts to measure the magnitude of an event that occurs with low frequency.  
+# MAGIC %md ざっと見たところ、多くの特徴量に *ゼロ膨張分布* があることがわかります。 これは、頻度の低い事象の大きさを計測しようとする場合によくある課題です。 
 # MAGIC 
-# MAGIC There is a growing body of literature describing various techniques for dealing with zero-inflated distributions and even some zero-inflated models designed to work with them.  For our purposes, we will simply separate features with these distributions into two features, one of which will capture the occurrence of the event as a binary (categorical) feature and the other which will capture the magnitude of the event when it occurs:
+# MAGIC ゼロ膨張分布に対処するための様々なテクニックや、ゼロ膨張分布を扱うために設計されたゼロ膨張モデルについての文献は増えてきていますが、ここでは単純にゼロ膨張分布とゼロ膨張分布を分けて考えます。 1つはイベントの発生をバイナリ（カテゴリカル）特徴として捉え、もう1つはイベントが発生したときの大きさを捉える特徴である。
 # MAGIC 
-# MAGIC **NOTE** We will label our binary features with a *has\_* prefix to make them more easily identifiable. We expect that if a household has zero purchase dates associated with an event, we'd expect that household also has no sales amount values for that event. With that in mind, we will create a single binary feature for an event and a secondary feature for each of the associated purchase date and amount list values.
+# MAGIC **注**）バイナリ特徴量には、識別しやすいように *has_* という接頭辞をつけることにする。あるイベントに関連する購入日がゼロの世帯は、そのイベントの販売金額値もゼロであると予想されます。そのため、イベントに対して1つのバイナリフィーチャーを作成し、関連する購入日と金額のリスト値に対してそれぞれ2つ目のフィーチャーを作成します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Features to Address Zero-Inflated Distribution Problem
+# DBTITLE 1,ゼロインフレーテッド・ディストリビューション問題に対応するための機能を定義する。
 # MAGIC %sql
 # MAGIC 
 # MAGIC DROP VIEW IF EXISTS journey.household_features;
@@ -347,7 +347,7 @@ for k in range(0,feature_count):
 
 # COMMAND ----------
 
-# DBTITLE 1,Read Features to Pandas
+# DBTITLE 1,特徴量をPandasで読み込む
 # retreive as Spark dataframe
 household_features = (
   spark
@@ -367,11 +367,11 @@ features_pd
 
 # COMMAND ----------
 
-# MAGIC %md With our features separated, let's look again at our feature distributions.  We'll start by examining our new binary features:
+# MAGIC %md 特徴を分離した上で、特徴の分布をもう一度見てみましょう。 まず、新しいバイナリ特徴量から見ていきます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Distribution of Binary Features
+# DBTITLE 1,2値化された特徴の分布を調べる
 b_feature_names = list(filter(lambda f:f[0:4]==('has_') , features_pd.columns))
 b_feature_count = len(b_feature_names)
 
@@ -417,7 +417,7 @@ for k in range(0,b_feature_count):
 
 # COMMAND ----------
 
-# MAGIC %md From the pie charts, it appears many promotional offers are not acted upon. This is typical for most promotional offers, especially those associated with coupons. Individually, we see low uptake on many promotional offers, but when we examine the uptake of multiple promotional offers in combination with each other, the frequency of uptake drops to levels where we might consider ignoring the offers in combination, instead focusing on them individually. We'll hold off on addressing that to turn our attention to our continuous features, many of which are now corrected for zero-inflation:
+# MAGIC %md 円グラフから、多くのプロモーション・オファーが実行されていないことがわかります。これは、多くのプロモーション・オファー、特にクーポンに関連したプロモーション・オファーに典型的なものです。個別に見ると、多くのプロモーション・オファーの利用率は低いですが、複数のプロモーション・オファーの利用率を互いに組み合わせて調べると、利用率は、個々のオファーに注目する代わりに、組み合わせのオファーを無視することを検討するレベルまで低下しています。この点については、ゼロ・インフレーション補正を行った継続的な機能に目を向けるため、ここでは保留とします。
 
 # COMMAND ----------
 
@@ -450,15 +450,15 @@ for k in range(0, c_feature_count):
 
 # COMMAND ----------
 
-# MAGIC %md With the zeros removed from many of our problem features, we now have more standard distributions.  That said, may of those distributions are non-normal (not Gaussian), and Gaussian distributions could be really helpful with many clustering techniques.
+# MAGIC %md 問題の特徴の多くからゼロが取り除かれたことで、より多くの標準的な分布が得られました。 しかし，これらの分布は非正規分布（ガウス分布ではない）である場合があり，ガウス分布は多くのクラスタリング技術で本当に役に立ちます．
 # MAGIC 
-# MAGIC One way to make these distributions more normal is to apply the Box-Cox transformation.  In our application of this transformation to these features (not shown), we found that many of the distributions failed to become much more normal than what is shown here.  So, we'll make use of another transformation which is a bit more assertive, the [quantile transformation](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.quantile_transform.html#sklearn.preprocessing.quantile_transform).
+# MAGIC これらの分布をより正規化する方法の1つは，Box-Cox変換を適用することです． この変換をこれらの特徴量に適用したところ（図示していません）、多くの分布がここに示したものよりもはるかに正規分布にならないことがわかりました。 そこで、もう少し主張の強い別の変換、[分位点変換](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.quantile_transform.html#sklearn.preprocessing.quantile_transform)を利用することにします。
 # MAGIC 
-# MAGIC The quantile transformation calculates the cumulative probability function associated with the data points for a given feature.  This is a fancy way to say that the data for a feature are sorted and a function for calculating the percent rank of a value within the range of observed values is calculated. That percent ranking function provides the basis of mapping the data to a well-known distribution such as a normal distribution. The [exact math](https://www.sciencedirect.com/science/article/abs/pii/S1385725853500125) behind this transformation doesn't have to be fully understood for the utility of this transformation to be observed.  If this is your first introduction to quantile transformations, just know the technique has been around since the 1950s and is heavily used in many academic disciplines:
+# MAGIC 分位値変換は与えられた特徴量のデータポイントに関連する累積確率関数を計算します。 これは、ある特徴のデータをソートし、観測された値の範囲内で、ある値のパーセントランクを計算する関数を計算することを言い表したものである。このパーセントランキング関数は、データを正規分布のようなよく知られた分布に対応させるための基礎となるものである。この変換の背後にある[正確な数学](https://www.sciencedirect.com/science/article/abs/pii/S1385725853500125)は、この変換の有用性を観察するために、完全に理解する必要はありません。 もしこれが分位値変換の最初の紹介なら、このテクニックは1950年代からあり、多くの学問分野で多用されていることを知るだけでよいでしょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Apply Quantile Transformation to Continuous Features
+# DBTITLE 1,連続特徴量に分位値変換を適用する
 # access continous features
 c_features_pd = features_pd[c_feature_names]
 
@@ -474,7 +474,7 @@ qc_features_pd
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Distribution of Quantile-Transformed Continuous Features
+# DBTITLE 1,分位変換された連続特徴量の分布を調べる
 qc_feature_names = qc_features_pd.columns
 qc_feature_count = len(qc_feature_names)
 
@@ -500,17 +500,17 @@ for k in range(0,qc_feature_count):
 
 # COMMAND ----------
 
-# MAGIC %md It's important to note that as powerful as the quantile transformation is, it does not magically solve all data problems.  In developing this notebook, we identified several features after transformation where there appeared to be a bimodal distribution to the data.  These features were ones for which we had initially decided not to apply the zero-inflated distribution correction.  Returning to our feature definitions, implementing the correction and rerunning the transform solved the problem for us. That said, we did not correct every transformed distribution where there is a small group of households positioned to the far-left of the distribution.  We decided that we would address only those where about 250+ households fell within that bin.
+# MAGIC %md ここで重要なのは、分位数変換が強力であるのと同様に、すべてのデータの問題を魔法のように解決できるわけではない、ということです。 このノートブックの開発では、変換後のデータに二峰性分布があるように見えるいくつかの特徴を確認しました。 これらの特徴は、当初ゼロ膨張分布補正を適用しないことにしていたものです。 このような場合、特徴量の定義に戻り、補正を行い、変換を再実行することで問題が解決されました。とはいえ，分布の左端に位置する小さな世帯群がある場合，すべての変換された分布を修正したわけではありません。 そこで、約250世帯以上の世帯がそのビンに含まれるものだけに対処することにしました。
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 3: Examine Relationships
+# MAGIC %md ## ステップ3: 関係を検証する
 # MAGIC 
-# MAGIC Now that we have our continuous features aligned with a normal distribution, let's examine the relationship between our feature variables, starting with our continuous features.  Using standard correlation, we can see we have a large number of highly related features.  The multicollinearity captured here, if not addressed, will cause our clustering to overemphasize some aspects of promotion response to the diminishment of others:
+# MAGIC 連続特徴量が正規分布に揃ったので、連続特徴量から始めて特徴変数間の関係を調べましょう。 標準的な相関を使用すると、非常に多くの関連する特徴があることがわかります。 ここに見られる多重共線性は、対処しなければ、プロモーション反応のある側面を過度に強調し、他の側面を弱めるクラスタリングの原因となります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Relationships between Continuous Features
+# DBTITLE 1,連続的な特徴の関係を調べる
 # generate correlations between features
 qc_features_corr = qc_features_pd.corr()
 
@@ -532,9 +532,9 @@ hmap = sns.heatmap(
 
 # COMMAND ----------
 
-# MAGIC %md And what about relationships between our binary features?  Pearson's correlation (used in the heatmap above), doesn't produce valid results when dealing with categorical data. So instead, we'll calculate [Theil's Uncertainty Coefficient](https://en.wikipedia.org/wiki/Uncertainty_coefficient), a metric designed to examine to what degree the value of one binary measure predicts another.  Theil's U falls within a range between 0, where there is no predictive value between the variables, and 1, where there is perfect predictive value. What's really interesting about this metric is that it is **asymmetric** so that the score shows for one binary measure predicts the other but not necessarily the other way around.  This will mean we need to carefully examine the scores in the heatmap below and not assume a symmetry in output around the diagonal:
+# MAGIC %md そして、バイナリ特徴間の関係についてはどうでしょうか？ ピアソンの相関(上記のヒートマップで使用)は、カテゴリデータを扱う場合、有効な結果を生成しません。そこで、代わりに[Theilの不確実性係数](https://en.wikipedia.org/wiki/Uncertainty_coefficient)を計算します。これは、あるバイナリ測定の値が、どの程度他の値を予測するかを調べるために設計された指標です。 TheilのUは、変数間に予測値がない0と、完全な予測値がある1の間の範囲に収まります。この指標で本当に面白いのは、それが**非対称**であることで、あるバイナリ測定の示すスコアが他を予測するが、必ずしもその逆ではないことである。 これは、以下のヒートマップのスコアを慎重に検討する必要があり、対角線上の出力が対称であると仮定しないことを意味します。
 # MAGIC 
-# MAGIC **NOTE** The primary author of the *dython* package from which we are taking the metric calculation has [an excellent article](https://towardsdatascience.com/the-search-for-categorical-correlation-a1cf7f1888c9) discussing Theil's U and related metrics.
+# MAGIC **注** メトリクスの計算を行う*dython*パッケージの主要な作者は、TheilのUと関連するメトリクスについて議論した[素晴らしい記事](https://towardsdatascience.com/the-search-for-categorical-correlation-a1cf7f1888c9)を持っています。
 
 # COMMAND ----------
 
@@ -554,23 +554,23 @@ _ = dython.nominal.associations(
 
 # COMMAND ----------
 
-# MAGIC %md As with our continuous features, we have some problematic relationships between our binary variables that we need to address.  And what about the relationship between the continous and categorical features? 
+# MAGIC %md  連続特徴量と同様に、バイナリ変数の関係にも問題があり、対処する必要があります。 また、連続特徴とカテゴリ特徴の関係はどうでしょうか？
 # MAGIC 
-# MAGIC We know from how they were derived that a binary feature with a value of 0 will have a NULL/NaN value for its related continuous features and that any real value for a continuous feature will translate into a value of 1 for the associated binary feature. We don't need to calculate a metric to know we have a relationship between these features (though the calculation of a [Correlation Ratio](https://towardsdatascience.com/the-search-for-categorical-correlation-a1cf7f1888c9) might help us if we had any doubts).  So what are we going to do to address these and the previously mentioned relationships in our feature data?
+# MAGIC 値0のバイナリ素性は、関連する連続素性に対してNULL/NaN値を持ち、連続素性の実数値は関連するバイナリ素性の値1に変換されることが、その由来から分かっています。これらの特徴の間に関係があることを知るために指標を計算する必要はありません（ただし、疑問があれば[Correlation Ratio](https://towardsdatascience.com/the-search-for-categorical-correlation-a1cf7f1888c9)を計算することで解決できるかもしれません）。 では、このような特徴量データの関係性に対処するためにはどうすればよいのでしょうか。
 # MAGIC 
-# MAGIC When dealing with a large number of features, these relationships are typically addressed using dimension reduction techniques. These techniques project the data in such a way that the bulk of the variation in the data is captured by a smaller number of features.  Those features, often referred to as latent factors or principal components (depending on the technique employed) capture the underlying structure of the data that is reflected in the surface-level features, and they do so in a way that the overlapping explanatory power of the features, *i.e.* the multi-collinearity, is removed.
+# MAGIC 多数の特徴量を扱う場合、これらの関係には通常、次元削減技術を用います。この手法は、データの変動の大部分がより少ない数の特徴によって捉えられるように、データを投影するものである。 これらの特徴は、潜在因子または主成分と呼ばれることが多く（採用する手法によって異なる）、表面レベルの特徴に反映されているデータの基本構造を捕らえ、特徴の重複する説明力、すなわち多重共線性を除去する方法でこれを行う。
 # MAGIC 
-# MAGIC So which dimension reduction technique should we use?  **Principal Components Analysis (PCA)** is the most popular of these techniques but it can only be applied to datasets comprised of continuous features. **Mixed Component Analysis (MCA)** is another of these techniques but it can only be applied to datasets with categorical features. **Factor Analysis of Mixed Data (FAMD)** allows us to combine concepts from these two techniques to construct a reduced feature set when our data consists of both continuous and categorical data.  That said, we have a problem with applying FAMD to our feature data.
+# MAGIC では、どの次元削減手法を使えばよいのでしょうか？ **主成分分析（PCA）** は、これらの手法の中で最も一般的ですが、連続特徴からなるデータセットにのみ適用できます。**混合成分分析(MCA)** もこれらの手法の1つですが、カテゴリ的な特徴を持つデータセットにのみ適用できます。**混合データの因子分析（FAMD）** は、連続データとカテゴリデータの両方からなるデータに対して、これら2つの手法の概念を組み合わせて、削減された特徴セットを構築することができます。 しかし、FAMDを我々の特徴量データに適用するには問題がある。
 # MAGIC 
-# MAGIC Typical implementations of both PCA and MCA (and therefore FAMD) require that no missing data values be present in the data.  Simple imputation using mean or median values for continuous features and frequently occurring values for categorical features will not work as the dimension reduction techniques key into the variation in the dataset, and these simple imputations fundamentally alter it. (For more on this, please check out [this excellent video](https://www.youtube.com/watch?v=OOM8_FH6_8o&feature=youtu.be). The video is focused on PCA but the information provided is applicable across all these techniques.)
+# MAGIC PCAとMCA（したがってFAMD）の典型的な実装では、データ中に欠損値が存在しないことが要求されます。 連続特徴量の場合は平均値や中央値、カテゴリ特徴量の場合は頻出値を用いた単純な代入は、次元削減技術がデータセットのバリエーションをキーにしており、これらの単純な代入はそれを根本的に変えてしまうため、うまくいかないのです。(これについては、[この素晴らしいビデオ](https://www.youtube.com/watch?v=OOM8_FH6_8o&feature=youtu.be)をご覧ください。このビデオはPCAに焦点を当てていますが、提供される情報はこれらの技術全てに適用可能です)。
 # MAGIC 
-# MAGIC In order to impute the data correctly, we need to examine the distribution of the existing data and leverage relationships between features to impute appropriate values from that distribution in a way that doesn't alter the projections. Work in this space is fairly nacent, but some Statisticians have worked out the mechanics for not only PCA and MCA but also FAMD.  Our challenge is that there are no libraries implementing these techniques in Python, but there are packages for this in R.
+# MAGIC データを正しくインプットするためには、既存のデータの分布を調べ、特徴間の関係を利用して、投影を変更しない方法で、その分布から適切な値をインプットする必要があります。この分野の研究はまだ始まったばかりですが、PCAやMCAだけでなく、FAMDの仕組みを解明した統計学者がいます。 私たちの課題は、Pythonにこれらの技術を実装したライブラリがないことです。しかし、Rにはこのためのパッケージがあります。
 # MAGIC 
-# MAGIC So now we need to get our data over to R.  To do this, let's our data as a temporary view with the Spark SQL engine.  This will allow us to query this data from R:
+# MAGIC そこで、SparkのSQLエンジンでデータを一時ビューとして取得することにしました。 これにより、Rからこのデータを照会できるようになります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Register Transformed Data as Spark DataFrame
+# DBTITLE 1,変換されたデータをSpark DataFrameとして登録する
 # assemble full dataset with transformed features
 trans_features_pd = pd.concat([ 
   households_pd,  # add household IDs as supplemental variable
@@ -583,7 +583,7 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md We will now prepare our R environment by loading the packages required for our work.  The [FactoMineR](https://www.rdocumentation.org/packages/FactoMineR/versions/2.4) package provides us with the required FAMD functionality while the [missMDA](https://www.rdocumentation.org/packages/missMDA/versions/1.18) package provides us with imputation capabilities:
+# MAGIC %md Rの環境を整えるために、必要なパッケージをロードする。[FactoMineR](https://www.rdocumentation.org/packages/FactoMineR/versions/2.4) パッケージは必要なFAMD機能を提供し、[missMDA](https://www.rdocumentation.org/packages/missMDA/versions/1.18) パッケージはインピュテーション機能を提供する。
 
 # COMMAND ----------
 
@@ -596,11 +596,11 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md And now we can pull our data into R.  Notice that we retrieve the data to a SparkR DataFrame before collecting it to a local R data frame:
+# MAGIC %md データをSparkR DataFrameに取得してから、Rのローカルデータフレームに収集していることに注意してください。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Spark Data to R Data Frame
+# DBTITLE 1,SparkのデータをRのデータフレームに取得する
 # MAGIC %r
 # MAGIC 
 # MAGIC # retrieve data from from Spark
@@ -614,22 +614,22 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md Looks like the data came across fine, but we need to examine how the binary features have been translated.  FactoMiner and missMDA require that categorical features be identified as [*factor* types](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/factor) and here we can see that they are coming across as characters:
+# MAGIC %md データはうまく伝わっているように見えますが、バイナリ特徴がどのように変換されたかを調べる必要があります。 FactoMinerとmissMDAはカテゴリ特徴を[*factor* types](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/factor)として識別することを要求していますが、ここでは文字として伝わっていることが確認できます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine the R Data Frame's Structure
+# DBTITLE 1,Rデータフレームの構造を調べる
 # MAGIC %r
 # MAGIC 
 # MAGIC str(df.r)
 
 # COMMAND ----------
 
-# MAGIC %md To convert our categorical features to factors, we apply a quick conversion:
+# MAGIC %md カテゴリカルな特徴を因子に変換するために、簡単な変換を適用する。
 
 # COMMAND ----------
 
-# DBTITLE 1,Convert Categorical Features to Factors
+# DBTITLE 1,カテゴリフィーチャーをファクターに変換する
 # MAGIC %r
 # MAGIC 
 # MAGIC library(dplyr)
@@ -639,11 +639,11 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md Now that the data is structured the right way for our analysis, we can begin the work of performing FAMD. Our first step is to determine the number of principal components required. The missMDA package provides the *estim_ncpFAMD* method for just this purpose, but please note that this routine **takes a long time to complete**.  We've include the code we used to run it but have commented it out and replaced it with the result it eventually landed upon during our run:
+# MAGIC %md これでデータは分析に適した構造になったので、FAMDを実行する作業を始めることができる。最初のステップは、必要な主成分の数を決定することです。missMDAパッケージはこの目的のために *estim_ncpFAMD* メソッドを提供していますが、このルーチンは **完了するのに長い時間がかかる** ことに注意してください。 このルーチンを実行するために使用したコードを含みますが、コメントアウトして、最終的に実行中に得られた結果に置き換えています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Determine Number of Components
+# DBTITLE 1,Component数の決定
 # MAGIC %r
 # MAGIC 
 # MAGIC library(missMDA)
@@ -658,11 +658,11 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md With the number of principal components determined, we can now impute the missing values.  Please note that FAMD, like both PCA and MCA, require features to be standardized.  The mechanisms for this differs based on whether a feature is continuous or categorical.  The *imputeFAMD* method provides functionality to tackle this with appropriate setting of the *scale* argument:
+# MAGIC %md 主成分の数が決まれば、あとは欠損値をインピュートするだけです。 FAMDは、PCAやMCAと同様に、特徴量を標準化する必要があることに注意してください。 このメカニズムは、特徴が連続的かカテゴリ的かによって異なります。 *imputeFAMD*メソッドは、*scale* 引数の適切な設定により、これに取り組むための機能を提供します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Impute Missing Values & Perform FAMD Transformation
+# DBTITLE 1,欠測値のインプットとFAMD変換の実行
 # MAGIC %r 
 # MAGIC 
 # MAGIC # impute missing values
@@ -688,11 +688,11 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md Each principal component generated by the FAMD accounts for a percent of the variance found in the overall dataset.  The percent for each principal component, identified as dimensions 1 through 8, are captured in the FAMD output along with the cumulative variance accounted for by the principal components:
+# MAGIC %md FAMDによって生成された各主成分は、データセット全体に見られる分散のパーセンテージを占めている。 各主成分のパーセントは、ディメンション1～8として識別され、主成分が占める累積分散とともにFAMDの出力に取り込まれる。
 
 # COMMAND ----------
 
-# DBTITLE 1,Plot Variance Captured by Components
+# DBTITLE 1,コンポーネントが捉えた分散をプロットする
 # MAGIC %r
 # MAGIC 
 # MAGIC library("ggplot2")
@@ -703,11 +703,11 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md Reviewing this output, we can see that the first two dimensions (principal components) account for about 50% of the variance, allowing us to get a sense of the structure of our data through a 2-D visualization:
+# MAGIC %md この出力を見てみると、最初の2次元（主成分）が分散の約50％を占めていることがわかり、2次元の可視化によってデータの構造を把握することができるようになりました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Visualize Households Leveraging First Two Components
+# DBTITLE 1,2つの要素による世帯の可視化
 # MAGIC %r
 # MAGIC 
 # MAGIC fviz_famd_ind(
@@ -721,15 +721,15 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# MAGIC %md Graphing our households by the first and second principal components indicates there may be some nice clusters of households within the data (as indicated by the grouping patterns in the chart). At a high-level, our data may indicate a couple large, we'll separated clusters, while at a lower-level, there may be some finer-grained clusters with overlapping boundaries within the larger groupings.
+# MAGIC %md 第一主成分と第二主成分で世帯をグラフ化すると、データの中にいくつかの素晴らしい世帯のクラスターがあることがわかります（グラフのグループ化パターンが示すとおりです）。また、より低いレベルでは、より細かいクラスターが存在し、その境界が大きなグループと重なっている可能性があります。
 # MAGIC 
-# MAGIC There are [many other types of visualization and analyses we can perform](http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/115-famd-factor-analysis-of-mixed-data-in-r-essentials/) on the FAMD results to gain a better understanding of how our base features are represented in each of the principal components, but we've got what we need for the purpose of clustering. We will now focus on getting the data from R and back into Python.
+# MAGIC FAMDの結果に対して、基本的な特徴がそれぞれの主成分でどのように表現されているかをより理解するために、[他にも多くの種類の可視化や分析が可能です](http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/115-famd-factor-analysis-of-mixed-data-in-r-essentials/)が、クラスタリングの目的には必要なものが揃っています。これから、RからPythonにデータを取り込むことに集中します。
 # MAGIC 
-# MAGIC To get started, let's retrieve principal component values for each of our households:
+# MAGIC まず、各世帯の主成分値を取得します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Household-Specific Values for Principal Components (Eigenvalues)
+# DBTITLE 1,主成分（固有値）に対する世帯固有の値を取得する
 # MAGIC %r
 # MAGIC 
 # MAGIC df.famd <- bind_cols(
@@ -741,7 +741,7 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Eigenvalues to Delta
+# DBTITLE 1,固有値の永続化(Deltaテーブルで保存)
 # MAGIC %r
 # MAGIC 
 # MAGIC df.out <- createDataFrame(df.famd)
@@ -750,18 +750,18 @@ spark.createDataFrame(trans_features_pd).createOrReplaceTempView('trans_features
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Eigenvalues in Python
+# DBTITLE 1,保存した固有値が読み込めるか確認 (Python)
 display(
   spark.table('DELTA.`/tmp/completejourney/silver/features_finalized/`')
   )
 
 # COMMAND ----------
 
-# MAGIC %md And now let's examine the relationships between these features:
+# MAGIC %md そして、次にこれらの特徴量の関係性を見てみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Relationships between Reduced Dimensions
+# DBTITLE 1,縮小された次元の関係を調べる
 # generate correlations between features
 famd_features_corr = spark.table('DELTA.`/tmp/completejourney/silver/features_finalized/`').drop('household_id').toPandas().corr()
 
@@ -783,4 +783,4 @@ hmap = sns.heatmap(
 
 # COMMAND ----------
 
-# MAGIC %md With multicollinearity addressed through our reduced feature set, we can now proceed with clustering.
+# MAGIC %md 特徴量の削減により多重共線性が解消されたので、クラスタリングを行うことができるようになりました。
