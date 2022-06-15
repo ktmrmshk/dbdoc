@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to access and prepare the data required for our segmentation work. This notebook has been developed on a Databricks ML 8.0 CPU-based cluster. 
+# MAGIC %md  このノートブックの目的は、セグメンテーション作業に必要なデータにアクセスし、準備することです。このノートブックはDatabricks ML 8.0 CPUベースのクラスタ上で開発されました。
 
 # COMMAND ----------
 
@@ -9,17 +9,17 @@ from pyspark.sql.functions import min, max
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 1: Access the Data
+# MAGIC %md ## ステップ1：データへのアクセス
 # MAGIC 
-# MAGIC The purpose of this exercise is to demonstrate how a Promotions Management team interested in segmenting customer households based on promotion responsiveness might perform the analytics portion of their work.  The dataset we will use has been made available by Dunnhumby via Kaggle and is referred to as [*The Complete Journey*](https://www.kaggle.com/frtgnn/dunnhumby-the-complete-journey). It consists of numerous files identifying household purchasing activity in combination with various promotional campaigns for about 2,500 households over a nearly 2 year period. The schema of the overall dataset may be represented as follows:
+# MAGIC この演習の目的は、プロモーションの反応性に基づいて顧客世帯をセグメント化することに興味を持つプロモーション管理チームが、分析の部分をどのように実行するかを示すことです。 今回使用するデータセットは、DunnhumbyがKaggleを通じて公開しているもので、[*The Complete Journey*](https://www.kaggle.com/frtgnn/dunnhumby-the-complete-journey)と呼ばれているものです。これは、約2年間にわたる約2,500世帯の様々なプロモーションキャンペーンと組み合わせた世帯の購買活動を特定する多数のファイルで構成されています。データセット全体のスキーマは以下のように表現される。
 # MAGIC 
-# MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/segmentation_journey_schema3.png' width=500>
+# MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/segmentation_journey_schema3.png' width=500>.
 # MAGIC 
-# MAGIC To make this data available for our analysis, it is downloaded, extracted and loaded to the *bronze* folder of a [cloud-storage mount point](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs) named */mnt/completejourney*.  From there, we might prepare the data as follows:
+# MAGIC このデータを分析に利用するために、`/mnt/completejourney` という名前の[クラウドストレージマウントポイント](https://docs.databricks.com/data/databricks-file-system.html#mount-object-storage-to-dbfs)の*bronze*フォルダにダウンロード、抽出、ロードしています。 そこから、以下のようにデータを準備することが考えられます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Database
+# DBTITLE 1,データベース作成
 # MAGIC %sql
 # MAGIC 
 # MAGIC DROP DATABASE IF EXISTS journey CASCADE;
@@ -27,7 +27,7 @@ from pyspark.sql.functions import min, max
 
 # COMMAND ----------
 
-# DBTITLE 1,Transactions
+# DBTITLE 1,トランザクション
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.transactions')
 
@@ -76,7 +76,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Products
+# DBTITLE 1,プロダクト
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.products')
 
@@ -120,7 +120,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Households
+# DBTITLE 1,世帯
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.households')
 
@@ -236,7 +236,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Coupons
+# DBTITLE 1,クーポン
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.coupons')
 
@@ -276,7 +276,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Campaigns
+# DBTITLE 1,キャンペーン
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.campaigns')
 
@@ -317,7 +317,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Coupon Redemptions
+# DBTITLE 1,クーポンの利用
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.coupon_redemptions')
 
@@ -358,7 +358,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Campaign-Household Relationships
+# DBTITLE 1,キャンペーンと世帯の関係
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.campaigns_households')
 
@@ -398,7 +398,7 @@ display(
 
 # COMMAND ----------
 
-# DBTITLE 1,Causal Data
+# DBTITLE 1,因果関係データ
 # delete the old table if needed
 _ = spark.sql('DROP TABLE IF EXISTS journey.causal_data')
 
@@ -440,11 +440,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 2: Adjust Transactional Data
+# MAGIC %md ## ステップ2：トランザクションデータの調整
 # MAGIC 
-# MAGIC With the raw data loaded, we need to make some adjustments to the transactional data.  While this dataset is focused on retailer-managed campaigns, the inclusion of coupon discount matching information would indicate the transaction data reflects discounts originating from both retailer- and manufacturer-generated coupons.  Without the ability to link a specific product-transaction to a specific coupon (when a redemption takes place), we will assume that any *coupon_discount* value associated with a non-zero *coupon_discount_match* value originates from a manufacturer's coupon.  All other coupon discounts will be assumed to be from retailer-generated coupons.  
+# MAGIC 生データがロードされたので、トランザクションデータを調整する必要があります。 このデータセットは小売業者が管理するキャンペーンに焦点を当てていますが、クーポン割引のマッチング情報を含めることで、小売業者とメーカーが作成したクーポンの両方から発生した割引をトランザクションデータに反映させることができます。 特定の商品トランザクションを特定のクーポンにリンクする機能がない場合（償還が行われた場合）、0 以外の *coupon_discount_match* 値に関連する *coupon_discount* 値は、メーカーのクーポンに由来するものと仮定します。 その他のクーポン割引はすべて、小売業者が作成したクーポンによるものと仮定する。 
 # MAGIC 
-# MAGIC In addition to the separation of retailer and manufacturer coupon discounts, we will calculate a list amount for a product as the sales amount minus all discounts applied:
+# MAGIC 小売店クーポン割引とメーカークーポン割引の分離に加え、商品の定価は、売上金額から適用されるすべての割引を差し引いた金額として計算されます。
 
 # COMMAND ----------
 
@@ -502,9 +502,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 3: Explore the Data
+# MAGIC %md ## ステップ3: データを調べる
 # MAGIC 
-# MAGIC The exact start and end dates for the records in this dataset are unknown.  Instead, days are represented by values between 1 and 711 which would seem to indicate the days since the beginning of the dataset:
+# MAGIC このデータセットのレコードの正確な開始日と終了日は不明である。 その代わり、日数は1〜711の値で表され、データセットの開始からの日数を示していると思われる。
 
 # COMMAND ----------
 
@@ -519,11 +519,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md A primary focus of our analysis will be how households respond to various retailer campaigns which we can assume include targeted mailers and coupons. Not every household in the transaction dataset has been targeted by a campaign but every household which has been targeted is represented in the transaction dataset:
+# MAGIC %md この分析の主な焦点は、ターゲットとなるメールマガジンやクーポンを含むと想定される様々な小売業者のキャンペーンに、世帯がどのように反応するかにあります。取引データセットのすべての世帯がキャンペーンのターゲットになっているわけではありませんが、ターゲットになっている世帯はすべて取引データセットに含まれています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Household Data in Campaigns
+# DBTITLE 1,キャンペーンにおける世帯のデータ
 # MAGIC %sql
 # MAGIC 
 # MAGIC SELECT
@@ -536,11 +536,11 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md When coupons are sent to a household as part of a campaign, the data indicate which products were associated with these coupons. The *coupon_redemptions* table provides us details about which of these coupons have been redeemed on which days by a given household. However, the coupon itself is not identified on a given transaction line item.
+# MAGIC %md キャンペーンの一環としてクーポンが世帯に送られると、データにはそのクーポンがどの商品と関連づけられたかが示されます。*coupon_redemptions* テーブルは、特定の世帯がどのクーポンをどの日に利用したかの詳細を提供します。しかし、クーポンそのものは、取引項目で識別されません。
 # MAGIC 
-# MAGIC Instead of working through the association of specific line items back to coupon redemptions and thereby tying transactions to specific campaigns, we've elected to simply attribute all line items associated with products promoted by campaigns as affected by the campaign whether or not a coupon redemption occurred.  This is a bit sloppy but we are doing this to simplify our overall logic. In a real-world analysis of these data, **this is a simplification that should be revisited**. In addition, please note that we are not examining the influence of in-store displays and store-specific fliers (as captured in the *causal_data* table).  Again, we are doing this in order to simplify our analysis.
+# MAGIC このため、特定の品目とクーポンの関連付けを行い、取引を特定のキャンペーンに関連付けるのではなく、キャンペーンで販売された商品に関連するすべての品目を、クーポンの引き換えがあったかどうかにかかわらず、キャンペーンの影響を受けたものとして単純に属性付けすることにしました。 これは少しずさんですが、全体のロジックを単純化するためにこのようにしています。実際のデータ分析では、**これは再検討されるべき簡略化です**。さらに、我々は（*causal_data*テーブルで捕捉されるように）店頭ディスプレイや店舗固有のチラシの影響を調査していないことに注意してください。 これも、分析を単純化するためです。
 # MAGIC 
-# MAGIC The logic shown here illustrates how we will associate campaigns with product purchases and will be reproduced in our feature engineering notebook:
+# MAGIC ここに示すロジックは、キャンペーンと商品購入をどのように関連付けるかを示しており、当社の機能エンジニアリングノートブックで再現される予定です。
 
 # COMMAND ----------
 
@@ -577,9 +577,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md One last thing to note, this dataset includes demographic data for only about 800 of the 2,500 households found in the transaction history. These data will be useful for profiling purposes, but we need to be careful before drawing conclusions from such a small sample of the data.
+# MAGIC %md 最後にもう一つ、このデータセットには、取引履歴で見つかった2,500世帯のうち、約800世帯の人口統計データが含まれているに過ぎないことに注意したい。これらのデータはプロファイリングを行う上で有用ですが、このような少ないサンプルデータから結論を導き出す前に注意が必要です。
 # MAGIC 
-# MAGIC Similarly, have no details on how the 2,500 households in the data set were selected.  All conclusions drawn from our analysis should be viewed with a recognition of this limitation:
+# MAGIC 同様に、この2,500世帯がどのように抽出されたのか、その詳細も不明である。 今回の分析から得られたすべての結論は、この限界を認識した上で見る必要がある。
 
 # COMMAND ----------
 
