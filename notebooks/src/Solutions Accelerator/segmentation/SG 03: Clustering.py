@@ -1,9 +1,9 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to identify potential segments for our households using a clustering technique. This notebook has been developed on a Databricks ML 8.0 CPU-based cluster. 
+# MAGIC %md このノートブックの目的は、クラスタリング技術を使って我々の世帯の潜在的なセグメントを特定することである。このノートブックはDatabricks ML 8.0 CPUベースのクラスタで開発されました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,必要なライブラリのインポート
 from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import silhouette_score, silhouette_samples
 from sklearn.model_selection import train_test_split
@@ -24,13 +24,13 @@ import seaborn as sns
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 1: Retrieve Features
+# MAGIC %md ## ステップ1：特徴の取得
 # MAGIC 
-# MAGIC Following the work performed in our last notebook, our households are now identified by a limited number of features that capture the variation found in our original feature set.  We can retrieve these features as follows:
+# MAGIC 前回のノートブックで行った作業により、元の特徴セットで見つかったバリエーションを捉えた、限られた数の特徴によって家庭が識別されるようになりました。 これらの特徴は、以下のようにして取得することができます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Transformed Features
+# DBTITLE 1,変換後の特徴量を取得する
 # retrieve household (transformed) features
 household_X_pd = spark.table('DELTA.`/tmp/completejourney/silver/features_finalized/`').toPandas()
 
@@ -41,13 +41,13 @@ household_X_pd
 
 # COMMAND ----------
 
-# MAGIC %md The exact meaning of each feature is very difficult to articulate given the complex transformations used in their engineering.  Still, they can be used to perform clustering.  (Through profiling which we will perform in our next notebook, we can then retrieve insight into the nature of each cluster.)
+# MAGIC %md 各特徴の正確な意味を明確にすることは、その工学的な複雑な変換を考えると非常に困難である。 それでも、クラスタリングに利用することは可能です。 (次のノートブックで行うプロファイリングにより、各クラスタの性質を知ることができます)。
 # MAGIC 
-# MAGIC As a first step, let's visualize our data to see if any natural groupings stand out.  Because we are working with a hyper-dimensional space, we cannot perfectly visualize our data but with a 2-D representation (using our first two principal component features), we can see there is a large sizeable cluster in our data and potentially a few additional, more loosely organized clusters:
+# MAGIC 最初のステップとして、データを可視化し、自然なグループ分けがあるかどうかを見てみましょう。 超次元空間を扱うので、データを完全に可視化することはできませんが、2次元表示（最初の2つの主成分特徴を使用）により、データに大きなサイズのクラスターがあること、さらにいくつかの緩やかに組織化されたクラスターがあることが分かります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Plot Households
+# DBTITLE 1,世帯をプロット
 fig, ax = plt.subplots(figsize=(10,8))
 
 _ = sns.scatterplot(
@@ -60,13 +60,13 @@ _ = sns.scatterplot(
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 2: K-Means Clustering
+# MAGIC %md ## ステップ2：K-Meansクラスタリング
 # MAGIC 
-# MAGIC Our first attempt at clustering with make use of the K-means algorithm. K-means is a simple, popular algorithm for dividing instances into clusters around a pre-defined number of *centroids* (cluster centers).  The algorithm works by generating an initial set of points within the space to serve as cluster centers.  Instances are then associated with the nearest of these points to form a cluster, and the true center of the resulting cluster is re-calculated.  The new centroids are then used to re-enlist cluster members, and the process is repeated until a stable solution is generated (or until the maximum number of iterations is exhausted). A quick demonstration run of the algorithm may produce a result as follows:
+# MAGIC クラスタリングの最初の試みは、K-means アルゴリズムを利用することです。K-meansは、あらかじめ定義された数の*セントロイド*（クラスタ中心）の周りのクラスタにインスタンスを分割するためのシンプルで一般的なアルゴリズムである。 このアルゴリズムは、クラスタ・センターとして機能する空間内の点の初期セットを生成することで機能します。 次に、インスタンスはこれらの点のうち最も近いものと関連付けられてクラスターを形成し、結果として得られるクラスターの真の中心が再計算される。 そして、新しい中心を使用してクラスタ・メンバーを再登録し、安定した解が生成されるまで（または最大反復回数を使い切るまで）このプロセスが繰り返される。このアルゴリズムの簡単なデモ実行では、次のような結果が得られます。
 
 # COMMAND ----------
 
-# DBTITLE 1,Demonstrate Cluster Assignment
+# DBTITLE 1,クラスターアサインメントを実証
 # initial cluster count
 initial_n = 4
 
@@ -103,13 +103,13 @@ _ = ax.legend(loc='lower right', ncol=1, fancybox=True)
 
 # COMMAND ----------
 
-# MAGIC %md Our initial model run demonstrates the mechanics of generating a K-means clustering solution, but it also demonstrates some of the shortcomings of the approach.  First, we need to specify the number of clusters.  Setting the value incorrectly can force the creation of numerous smaller clusters or just a few larger clusters, neither of which may reflect what we may observe to be the more immediate and natural structure inherent to the data.
+# MAGIC %md この最初のモデル実行は、K-meansクラスタリングソリューションの生成の仕組みを示すものですが、このアプローチの欠点もいくつか示しています。 まず、クラスタ数を指定する必要があります。 この値を間違って設定すると、多数の小さなクラスタ、あるいは少数の大きなクラスタが作成されることになり、どちらも、データに内在する、より直接的で自然な構造を観察することを反映しない可能性がある。
 # MAGIC 
-# MAGIC Second, the results of the algorithm are highly dependent on the centroids with which it is initialized. The use of the K-means++ initialization algorithm addresses some of these problems by better ensuring that initial centroids are dispersed throughout the populated space, but there is still an element of randomness at play in these selections that can have big consequences for our results.
+# MAGIC 第二に、このアルゴリズムの結果は、初期化されたセントロイドに大きく依存する。K-means++の初期化アルゴリズムの使用は、初期セントロイドが人口空間全体に分散していることをより確実にすることで、これらの問題のいくつかを解決する。しかし、これらの選択にはまだランダム性の要素があり、我々の結果に大きな影響を与える可能性がある。
 # MAGIC 
-# MAGIC To begin working through these challenges, we will generate a large number of model runs over a range of potential cluster counts. For each run, we will calculate the sum of squared distances between members and assigned cluster centroids (*inertia*) as well as a secondary metric (*silhouette score*) which provides a combined measure of inter-cluster cohesion and intra-cluster separation (ranging between -1 and 1 with higher values being better). Because of the large number of iterations we will perform, we will distribute this work across our Databricks cluster so that it can be concluded in a timely manner:
+# MAGIC これらの課題を解決するために、潜在的なクラスタ数の範囲において、多数のモデル実行を生成します。各実行において、メンバー間の二乗距離の合計と割り当てられたクラスタ中心点（*イナーシャ*）、およびクラスタ間の凝集とクラスタ内の分離を組み合わせた指標（-1～1の範囲、値が高いほど良好）を提供する二次指標（*シルエットスコア*）を算出する。反復処理の回数が多いため、この作業をDatabricksクラスタに分散させ、タイムリーに終了させる予定です。
 # MAGIC 
-# MAGIC **NOTE** We are using a Spark RDD as a crude means of exhaustively searching our parameter space in a distributed manner. This is an simple technique frequently used for efficient searches over a defined range of values.
+# MAGIC **注** Spark RDDは、パラメータ空間を分散して網羅的に探索する粗い方法として使用しています。これは、定義された値の範囲を効率的に検索するために頻繁に使用される簡単なテクニックです。
 
 # COMMAND ----------
 
@@ -150,7 +150,7 @@ display(results_pd)
 
 # COMMAND ----------
 
-# MAGIC %md Plotting inertia relative to n, *i.e.* the target number of clusters, we can see that the total sum of squared distances between cluster members and cluster centers decreases as we increase the number of clusters in our solution.  Our goal is not to drive inertia to zero (which would be achieved if we made each member the center of its own, 1-member cluster) but instead to identify the point in the curve where the incremental drop in inertia is diminished.  In our plot, we might identify this point as occurring somewhere between 2 and 6 clusters:
+# MAGIC %md イナーシャをn、つまり目標とするクラスタ数に対してプロットすると、クラスタメンバーとクラスタセンターの間の二乗距離の総和が、ソリューションのクラスタ数を増やすにつれて減少していることがわかります。 我々の目標は、慣性をゼロにすることではなく（これは、各メンバーをそれ自身の1メンバー・クラスターの中心にした場合に達成されます）、慣性の漸進的な低下が減少する曲線のポイントを特定することです。 このプロットでは、2クラスタと6クラスタの間のどこかにこのポイントがあると見なすことができる。
 
 # COMMAND ----------
 
@@ -159,7 +159,7 @@ display(results_pd)
 
 # COMMAND ----------
 
-# MAGIC %md Interpreting the *elbow chart*/*scree plot* of inertia *vs.* n is fairly subjective, and as such, it can be helpful to examine how another metric behaves relative to our cluster count.  Plotting silhouette score relative to n provides us the opportunity to identify a peak (*knee*) beyond which the score declines.  The challenge, as before, is exactly determining the location of that peak, especially given that the silhouette scores for our iterations vary much more than our inertia scores:
+# MAGIC %md イナーシャの*elbow chart*/*scree plot* の解釈はかなり主観的であり、そのため、別のメトリックがクラスタ数に対してどのように振る舞うかを調べることが有用である。 シルエットスコアをnに対してプロットすることで、スコアが低下するピーク（*knee*）を特定する機会を得ることができます。 特に、イナーシャスコアよりもシルエットスコアの方が変化が大きいので、そのピークの位置を正確に特定することが課題です。
 
 # COMMAND ----------
 
@@ -168,15 +168,15 @@ display(results_pd)
 
 # COMMAND ----------
 
-# MAGIC %md While providing a second perspective, the plot of silhouette scores reinforces the notion that selecting a number of clusters for K-means is a bit subjective.  Domain knowledge coupled with inputs from these and similar charts (such as a chart of the [Gap statistic](https://towardsdatascience.com/k-means-clustering-and-the-gap-statistics-4c5d414acd29)) may help point you towards an optimal cluster count but there are no widely-accepted, objective means of determining this value to date.
+# MAGIC %md 第2の視点を提供する一方で、シルエットスコアのプロットは、K-meansのクラスタ数の選択は少し主観的であるという概念を補強します。 ドメインの知識とこれらと同様のチャート（[ギャップ統計](https://towardsdatascience.com/k-means-clustering-and-the-gap-statistics-4c5d414acd29)のチャートなど）からの入力が最適なクラスタ数の方向を示すのに役立つかもしれませんが、この値を決定する広く受け入れられた客観的な手段は今のところありません。
 # MAGIC 
-# MAGIC **NOTE** We need to be careful to avoid chasing the highest value for the silhouette score in the knee chart. Higher scores can be obtained with higher values of n by simply pushing outliers into trivially small clusters.
+# MAGIC **NOTE** ニーチャートでシルエットスコアの最高値を追い求めないように注意する必要があります。より高いスコアは、外れ値を単純に小さなクラスタに押し込むことによって、より高いnの値で得ることができる。
 # MAGIC 
-# MAGIC For our model, we'll go with a value of 2.  Looking at the plot of inertia, there appears to be evidence supporting this value.  Examining the silhouette scores, the clustering solution appears to be much more stable at this value than at values further down the range. To obtain domain knowledge, we might speak with our promotions experts and gain their perspective on not only how different households respond to promotions but what might be a workable number of clusters from this exercise.  But most importantly, from our visualization, the presence of 2 well-separated clusters seems to naturally jump out at us.
+# MAGIC 慣性のプロットを見ると、この値を支持する証拠があるように見える。 シルエットスコアを調べると、この値では、より低い範囲の値よりも、クラスタリング解がより安定しているように見えます。また、この演習で得られたクラスタの数は、実用的な数である可能性があります。 しかし、最も重要なことは、私たちの可視化から、よく分離された2つのクラスタの存在が自然に目に飛び込んでくることです。
 # MAGIC 
-# MAGIC With a value for n identified, we now need to generate a final cluster design.  Given the randomness of the results we obtain from a K-means run (as captured in the widely variable silhouette scores), we might take a *best-of-k* approach to defining our cluster model.  In such an approach, we run through some number of K-means model runs and select the run that delivers the best result as measured by a metric such as silhouette score. To distribute this work, we'll implement a custom function that will allow us to task each worker with finding a best-of-k solution and then take the overall best solution from the results of that work:
+# MAGIC nの値が決まったら、次は最終的なクラスターデザインを作成する必要があります。 K-meansの実行から得られる結果のランダム性（大きく変化するシルエット・スコアで捕らえられたように）を考えると、クラスタ・モデルを定義するために*best-of-k*アプローチを取ることができます。 このようなアプローチでは、いくつかのK-meansモデルの実行を行い、シルエット・スコアのような指標によって測定される最良の結果をもたらす実行を選択します。この作業を分散させるために、カスタム関数を実装し、各ワーカーにベスト・オブ・K解を求める作業をさせ、その結果から全体のベスト解を求めるようにします。
 # MAGIC 
-# MAGIC **NOTE** We are again using an RDD to allow us to distribute the work across our cluster.  The *iterations* RDD will hold a value for each iteration to perform.  Using *mapPartitions()* we will determine how many iterations are assigned to a given partition and then force that worker to perform an appropriately configured best-of-k evaluation.  Each partition will send back the best model it could discover and then we will take the best from these.
+# MAGIC **注** ここでもRDDを使用して、作業をクラスタ全体に分散できるようにしています。 *iterations* RDDは、実行する各反復のための値を保持します。 *mapPartitions()* を使って、与えられたパーティションに割り当てられた反復処理の数を決定し、そのワーカーに適切に構成されたベストオブK評価を実行させます。 各パーティションは発見できた最良のモデルを返送し、その中から最良のものを選びます。
 
 # COMMAND ----------
 
@@ -236,7 +236,7 @@ X_broadcast.unpersist()
 
 # COMMAND ----------
 
-# MAGIC %md We can now visualize our results to get a sense of how the clusters align with the structure of our data:
+# MAGIC %md この結果を視覚化することで、クラスタとデータの構造がどのように整合しているかを知ることができます。
 
 # COMMAND ----------
 
@@ -257,9 +257,9 @@ _ = ax.legend(loc='lower right', ncol=1, fancybox=True)
 
 # COMMAND ----------
 
-# MAGIC %md The results of our analysis are not earth-shattering but they don't need to be.  Our data would indicate that for these features we could very reasonably consider our customer households as existing in two fairly distinct groups.  That said, we might want to look at how well individual households sit within these groups, which we can do through a per-instance silhouette chart:
+# MAGIC %md この分析結果は画期的なものではありませんが、そうである必要はないでしょう。 このデータから、これらの特徴を持つ顧客世帯は、2つのグループに分かれて存在すると考えるのが妥当でしょう。 しかし、個々の世帯がどの程度これらのグループに属しているのか、インスタンスごとのシルエットチャートで確認することができます。
 # MAGIC 
-# MAGIC **NOTE** This code represents a modified version of the [silhouette charts](https://scikit-learn.org/stable/auto_examples/cluster/plot_kmeans_silhouette_analysis.html) provided in the Sci-Kit Learn documentation.
+# MAGIC **注** このコードは、Sci-Kit Learnのドキュメントで提供されている[silhouette charts](https://scikit-learn.org/stable/auto_examples/cluster/plot_kmeans_silhouette_analysis.html)を修正したものを表しています。
 
 # COMMAND ----------
 
@@ -326,13 +326,13 @@ _ = plot_silhouette_chart(X, bestofk_clusters)
 
 # COMMAND ----------
 
-# MAGIC %md From the silhouette chart, we would appear to have one cluster a bit larger than the other.  That cluster appears to be reasonably coherent.  Our other clusters appear to be a bit more dispersed with a more rapid decline in silhouette score values ultimately leading a few members to have negative silhouette scores (indicating overlap with other cluster). 
+# MAGIC %md シルエットチャートから、1つのクラスタが他より少し大きく見える。 そのクラスターは、それなりにまとまりがあるように見えます。 他のクラスターは、もう少し分散しているように見え、シルエットスコアの値がより急速に減少し、最終的に数人のメンバーがマイナスのシルエットスコアを持つ（他のクラスターとの重複を示す）ようになります。
 # MAGIC 
-# MAGIC This solution may be useful for better understanding customer behavior relative to promotional offers. We'll persist our cluster assignments before examining other clustering techniques:
+# MAGIC この解決策は、プロモーションオファーに関連する顧客の行動をより良く理解するために有用であると思われます。他のクラスタリング手法を検討する前に、クラスタの割り当てを持続させる。
 
 # COMMAND ----------
 
-# DBTITLE 1,Persist Cluster Assignments
+# DBTITLE 1,結果の永続化
 # persist household id and cluster assignment
 ( 
   spark # bring together household and cluster ids
@@ -351,17 +351,17 @@ _ = plot_silhouette_chart(X, bestofk_clusters)
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 3: Hierarchical Clustering
+# MAGIC %md ## ステップ 3: 階層的クラスタリング
 # MAGIC 
-# MAGIC In addition to K-means, hierarchical clustering techniques are frequently used in customer segmentation exercises. With the agglomerative-variants of these techniques, clusters are formed by linking members closest to one another and then linking those clusters to form higher level clusters until a single cluster encompassing all the members of the set is formed.
+# MAGIC K-meansに加えて、階層的クラスタリング技術が顧客セグメンテーションの演習で頻繁に使用される。これらの技術の凝集型バリエーションでは、クラスタは、互いに最も近いメンバーをリンクすることによって形成され、セットのすべてのメンバーを包含する単一のクラスタが形成されるまで、それらのクラスタをリンクしてより高いレベルのクラスタを形成する。
 # MAGIC 
-# MAGIC Unlike K-means, the agglomerative process is deterministic so that repeated runs on the same dataset lead to the same clustering outcome. So while the hierarchical clustering techniques are frequently criticized for being slower than K-means, the overall processing time to arrive at a particular result may be lessened as no repeat executions of the algorithm are required to arrive at a *best-of* outcome.
+# MAGIC K-meansとは異なり、凝集過程は決定論的であり、同じデータセットで繰り返し実行すると同じクラスタリング結果が得られる。したがって、階層型クラスタリング技術はK-meansよりも遅いという批判をよく受けるが、ベストオブ*な結果を得るためにアルゴリズムを繰り返し実行する必要がないため、特定の結果を得るための全体的な処理時間は短縮される可能性がある。
 # MAGIC 
-# MAGIC To get a better sense of how this technique works, let's train a hierarchical clustering solution and visualize its output:
+# MAGIC この技術がどのように機能するかをより良く理解するために、階層型クラスタリング解を学習させ、その出力を可視化してみましょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Function to Plot Dendrogram
+# DBTITLE 1,デンドログラムを作成する関数
 # modified from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
 
 # function to generate dendrogram
@@ -394,7 +394,7 @@ def plot_dendrogram(model, **kwargs):
 
 # COMMAND ----------
 
-# DBTITLE 1,Train & Visualize Hierarchical Model
+# DBTITLE 1,階層的なモデルの学習と可視化
 # train cluster model
 inithc_model = AgglomerativeClustering(distance_threshold=0, n_clusters=None, linkage='ward')
 inithc_model.fit(X)
@@ -409,24 +409,25 @@ _ = plt.xlabel('Number of points in node (or index of point if no parenthesis)')
 
 # COMMAND ----------
 
-# MAGIC %md The dendrogram is read from the bottom up.  Each initial point represents a cluster consisting of some number of members.  The entire process by which those members come together to form those specific clusters is not visualized (though you can adjust the *p* argument in the *plot_dendrograms* function to see further down into the process).
+# MAGIC %md デンドログラムは、下から上に読み込まれます。 各初期点は、ある数のメンバーからなるクラスタを表します。 それらのメンバーが集まって特定のクラスタを形成するプロセス全体は可視化されません（ただし、プロセスのさらに下を見るために *plot_dendrograms* 関数の *p* 引数を調整することができます）。
 # MAGIC 
-# MAGIC As you move up the dendrogram, clusters converge to form new clusters.  The vertical length traversed to reach that point of convergence tells us something about the distance between these clusters.  The longer the length, the wider the gap between the converging clusters.
+# MAGIC デンドログラムの上部に移動すると、クラスターは新しいクラスターを形成するために収束します。 その収束点に到達するために横断した垂直方向の長さは、これらのクラスター間の距離について何かを教えてくれます。 長さが長いほど、収束するクラスター間のギャップが広くなります。
 # MAGIC 
-# MAGIC The dendrogram gives us a sense of how the overall structure of the dataset comes together but it doesn't steer us towards a specific number of clusters for our ultimate clustering solution.  For that, we need to revert to the plotting of a metric, such as silhouette scores, to identify the appropriate number of clusters for our solution.
+# MAGIC デンドログラムは、データセットの全体的な構造がどのように組み合わされているかを教えてくれますが、最終的なクラスタリングソリューションのための特定のクラスタ数の方向性を示してはくれません。 そのため、我々のソリューションに適切なクラスタ数を特定するために、シルエットスコアのようなメトリックのプロットに戻る必要があります。
 # MAGIC 
-# MAGIC Before plotting silhouette against various numbers of clusters, it's important to examine the means by which clusters are combined to form new clusters.  There are many algorithms (*linkages*) for this.  The SciKit-Learn library supports four of them.  These are:
+# MAGIC 様々なクラスタ数に対してシルエットをプロットする前に、クラスタが結合されて新しいクラスタを形成する手段を調べることが重要です。 これには多くのアルゴリズム（*リンク*）がある． SciKit-Learnライブラリは、そのうちの4つをサポートしています。 これらは
 # MAGIC <p>
-# MAGIC * *ward* - link clusters such that the sum of squared distances within the newly formed clusters is minimized
-# MAGIC * *average* - link clusters based on the average distance between all points in the clusters
-# MAGIC * *single* - link clusters based on the minimum distance between any two points in the clusters
-# MAGIC * *complete* - link clusters based on the maximum distance between any two points in the clusters
 # MAGIC   
-# MAGIC Different linkage mechanisms can result in very different clustering outcomes. Ward's method (denoted by the *ward* linkage mechanism) is considered the go-to for most clustering exercises unless domain knowledge dictates the use of an alternative method:
+# MAGIC * 新しいクラスタ内の二乗距離の合計が最小になるように、クラスタをリンクします。
+# MAGIC * 平均* - クラスタ内のすべての点間の平均距離に基づいてクラスタをリンクします。
+# MAGIC * シングル* - クラスタ内の任意の2点間の最小距離に基づいてクラスタをリンクします。
+# MAGIC * compplete* - クラスタ内の任意の2点間の最大距離に基づいてクラスタをリンクします。
+# MAGIC   
+# MAGIC リンクのメカニズムが異なると、クラスタリングの結果が大きく異なることがあります。Wardの方法（*ward*リンク・メカニズムで示される）は、ドメインの知識によって別の方法を使用する必要がない限り、ほとんどのクラスタリング演習で使用されると考えられています。
 
 # COMMAND ----------
 
-# DBTITLE 1,Identify Number of Clusters
+# DBTITLE 1,クラスター数の特定
 results = []
 
 # train models with n number of clusters * linkages
@@ -445,7 +446,7 @@ display(results_pd)
 
 # COMMAND ----------
 
-# MAGIC %md The results would indicate our best results may be found using 5 clusters:
+# MAGIC %md その結果、5クラスタを使用した場合に、最良の結果が得られる可能性があることがわかりました。
 
 # COMMAND ----------
 
@@ -475,7 +476,7 @@ besthc_labeled_X_pd = (
 
 # COMMAND ----------
 
-# MAGIC %md Visualizing these clusters, we can see how groupings reside within the data structure.  In our initial visualization of the features, we argued that there were two high-level clusters that stood out (and our K-means algorithm seemed to pick this up very well).  Here, our hierarchical clustering algorithm seems to have picked up on the looser subclusters a bit better, though it also seems to have picked up on some loosely organized households for one very small cluster:
+# MAGIC %md これらのクラスターを視覚化することで、データ構造の中にどのようにグループ化が存在するのかを見ることができます。 最初の特徴の可視化では、目立つ2つのハイレベルなクラスタがあると主張しました（そして、K-meansアルゴリズムはこれを非常にうまくピックアップしているように見えました）。 しかし、階層型クラスタリング・アルゴリズムでは、より緩やかなサブクラスタが若干検出されたようです。ただし、非常に小さなクラスタについては、緩やかに組織化された世帯が検出されたようです。
 
 # COMMAND ----------
 
@@ -496,7 +497,7 @@ _ = ax.legend(loc='lower right', ncol=1, fancybox=True)
 
 # COMMAND ----------
 
-# MAGIC %md Our per-instance silhouette scores show us we have a bit more overlap between clusters when examined at this level.  One of the clusters has so few members it doesn't seem worth keeping it, especially when we review the 2-D visualization and see that these points seem to be highly intermixed with other clusters (at least when viewed from this perspective):
+# MAGIC %md インスタンスごとのシルエット・スコアを見ると、このレベルで調べた場合、クラスタ間にもう少し重複があることがわかります。 特に、2次元の可視化を確認すると、これらのポイントは他のクラスターと非常に混在しているように見えます（少なくともこの観点から見た場合）。
 
 # COMMAND ----------
 
@@ -505,7 +506,7 @@ _ = plot_silhouette_chart(X, besthc_clusters)
 
 # COMMAND ----------
 
-# MAGIC %md With that in mind, we'll retrain our model with a cluster count of 4 and then persist those results:
+# MAGIC %md それを踏まえて、クラスタ数を4にしてモデルを再トレーニングし、その結果を永続化します。
 
 # COMMAND ----------
 
@@ -557,7 +558,7 @@ _ = plot_silhouette_chart(X, besthc_clusters)
 
 # COMMAND ----------
 
-# DBTITLE 1,Add Field to Hold Hierarchical Cluster Assignment
+# DBTITLE 1,階層的なクラスタの割り当てを保持するフィールドの追加
 # add column to previously created table to allow assignment of cluster ids
 # try/except used here in case this statement is being rurun against a table with field already in place
 try:
@@ -567,7 +568,7 @@ except:
 
 # COMMAND ----------
 
-# DBTITLE 1,Update Persisted Data to Hold Hierarchical Cluster Assignment
+# DBTITLE 1,階層的なクラスタ割り当てを保持するために、永続化されたデータを更新する。
 # assemble household IDs and new cluster IDs
 updates = (
   spark
@@ -594,8 +595,8 @@ deltaTable = DeltaTable.forPath(spark, '/tmp/completejourney/gold/household_clus
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 4: Other Techniques
+# MAGIC %md ## ステップ4：その他のテクニック
 # MAGIC 
-# MAGIC We have only begun to scratch the surface on the clustering techniques available to us.  [K-Medoids](https://scikit-learn-extra.readthedocs.io/en/latest/generated/sklearn_extra.cluster.KMedoids.html), a variation of K-means which centers clusters on actual members in the dataset, allows for alternative methods (other than just Euclidean distance) of considering member similarities and may be more robust to noise and outliers in a dataset. [Density-Based Spatial Clustering of Applications with Noise (DBSCAN)](https://scikit-learn.org/stable/modules/clustering.html#dbscan) is another interesting clustering technique which identifies clusters in areas of high member density while ignoring dispersed members in lower-density regions. This would seem to be a good technique for this dataset but in our examination of DBSCAN (not shown), we had difficulty tuning the *epsilon* and *minimum sample count* parameters (that control how high-density regions are identified) to produce a high-quality clustering solution. And [Gaussian Mixture Models](https://scikit-learn.org/stable/modules/mixture.html#gaussian-mixture-models) offer still another approach popular in segmentation exercises which allows clusters with non-spherical shapes to be more easily formed.
+# MAGIC 我々は、利用可能なクラスタリング技術について、表面を削り始めたに過ぎません。 [K-Medoids](https://scikit-learn-extra.readthedocs.io/en/latest/generated/sklearn_extra.cluster.KMedoids.html) はK-meansのバリエーションで、データセットの実際のメンバーでクラスタを構成します。メンバーの類似性を考慮するための代替方法（ユークリッド距離以外）が可能で、データセットのノイズや外れ値に対してより頑強かもしれません。[Density-Based Spatial Clustering of Applications with Noise (DBSCAN)](https://scikit-learn.org/stable/modules/clustering.html#dbscan) も興味深いクラスタリング手法で、メンバー密度の高い領域でクラスタを特定し、密度の低い領域で分散したメンバーを無視するものです。これは、このデータセットに適した手法と思われますが、DBSCANの検証（図示せず）では、高品質のクラスタリング解を生成するための*epsilon*および*minimum sample count*パラメータ（高密度領域の識別方法を制御）の調整が困難でした。また、[Gaussian Mixture Models](https://scikit-learn.org/stable/modules/mixture.html#gaussian-mixture-models) は、球形でないクラスターをより簡単に形成することができ、セグメンテーションの演習で人気のある別のアプローチを提供しています。
 # MAGIC 
-# MAGIC In addition to alternative algorithms, there is emerging work in the development of cluster ensemble models (aka *consensus clustering*). First introduced by [Monti *et al.*](https://link.springer.com/article/10.1023/A:1023949509487) for application in genomics research, consensus clustering has found popularity in a broad range of life science applications though there appears to be little adoption to date in the area of customer segmentation. Support for consensus clustering through the [OpenEnsembles](https://www.jmlr.org/papers/v19/18-100.html) and [kemlglearn](https://nbviewer.jupyter.org/github/bejar/URLNotebooks/blob/master/Notebooks/12ConsensusClustering.ipynb) packages is available in Python though much more robust support for consensus clustering can be found in R libraries such as [diceR](https://cran.r-project.org/web/packages/diceR/index.html). A limited exploration of these packages and libraries (not shown) produced mixed results though we suspect this has more to do with our own challenges with hyperparameter tuning and less to do with the algorithms themselves.
+# MAGIC 代替アルゴリズムに加えて、クラスターアンサンブルモデル（別名、*コンセンサスクラスタリング*）の開発における新たな研究があります。[Monti *et al.*](https://link.springer.com/article/10.1023/A:1023949509487)によってゲノム研究への応用のために初めて紹介されたコンセンサスクラスタリングは、幅広いライフサイエンス用途で人気を博しているが、顧客セグメンテーションの分野ではこれまでほとんど採用されていないようである。Pythonでは[OpenEnsembles](https://www.jmlr.org/papers/v19/18-100.html)と[kemlglearn](https://nbviewer.jupyter.org/github/bejar/URLNotebooks/blob/master/Notebooks/12ConsensusClustering.ipynb)というパッケージでコンセンサスクラスタリングをサポートしていますが、[diceR](https://cran.r-project.org/web/packages/diceR/index.html) などのRライブラリでより強固なコンセンサスクラスタリングのサポートが見つかります。これらのパッケージやライブラリを限定的に調査したところ（図示していません）、結果はまちまちでしたが、これはハイパーパラメータのチューニングに関する私たち自身の課題によるところが大きく、アルゴリズム自体にはあまり関係がないのではないかと考えています。
