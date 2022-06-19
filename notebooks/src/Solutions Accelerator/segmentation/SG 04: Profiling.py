@@ -1,9 +1,9 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to better understand the clusters generated in the prior notebook leveraging some standard profiling techniques. This notebook has been developed on a Databricks ML 8.0 CPU-based cluster.
+# MAGIC %md  このノートブックの目的は、標準的なプロファイリング技術を活用して、前のノートブックで生成されたクラスタをよりよく理解することです。このノートブックはDatabricks ML 8.0 CPUベースのクラスタ上で開発されました。
 
 # COMMAND ----------
 
-# DBTITLE 1,Import Required Libraries
+# DBTITLE 1,必要なライブラリのインポート
 import mlflow
 
 import pandas as pd
@@ -25,15 +25,15 @@ from pyspark.sql.functions import expr
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 1: Assemble Segmented Dataset
+# MAGIC %md ## ステップ1: セグメンテーションされたデータセットのアセンブル
 # MAGIC 
-# MAGIC We now have clusters but we're not really clear on what exactly they represent.  The feature engineering work we performed to avoid problems with the data that might lead us to invalid or inappropriate solutions have made the data very hard to interpret.  
+# MAGIC クラスタができましたが、それらが一体何を表しているのかがよくわかりません。 無効または不適切な解を導くかもしれないデータの問題を回避するために行った特徴工学の作業は、データを非常に解釈しにくくしています。 
 # MAGIC 
-# MAGIC To address this problem, we'll retrieve the cluster labels (assigned to each household) along with the original features associated with each:
+# MAGIC この問題を解決するために、（各世帯に割り当てられた）クラスタラベルと、それぞれに関連する元の特徴を取得します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Retrieve Features & Labels
+# DBTITLE 1,特徴量・ラベルの取得
 # retrieve features and labels
 household_basefeatures = spark.table('journey.household_features')
 household_finalfeatures = spark.table('DELTA.`/tmp/completejourney/silver/features_finalized/`')
@@ -57,20 +57,20 @@ labeled_basefeatures_pd
 
 # COMMAND ----------
 
-# MAGIC %md Before proceeding with our analysis of these data, let's set a few variables that will be used to control the remainder of our analysis.  We have multiple cluster designs but for this notebook, we will focus our attention on the results from our hierarchical clustering model:
+# MAGIC %md これらのデータの分析を進める前に、分析の残りの部分をコントロールするために使用されるいくつかの変数を設定しましょう。 複数のクラスタデザインがありますが、このノートでは、階層型クラスタリングモデルからの結果に注目します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Set Cluster Design to Analyze
+# DBTITLE 1,解析するクラスターデザインを設定する
 cluster_column = 'hc_cluster'
 cluster_count = len(np.unique(labeled_finalfeatures_pd[cluster_column]))
 cluster_colors = [cm.nipy_spectral(float(i)/cluster_count) for i in range(cluster_count)]
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 2: Profile Segments
+# MAGIC %md ## ステップ2: セグメントのプロファイル
 # MAGIC 
-# MAGIC To get us started, let's revisit the 2-dimensional visualization of our clusters to get us oriented to the clusters.  The color-coding we use in this chart will be applied across our remaining visualizations to make it easier to determine the cluster being explored:
+# MAGIC まず始めに、クラスターの2次元の可視化をもう一度見て、クラスターの方向性を確認しましょう。 このグラフで使用している色分けは、残りの可視化にも適用され、探索中のクラスターを容易に判断できるようになります。
 
 # COMMAND ----------
 
@@ -91,11 +91,11 @@ _ = ax.legend(loc='lower right', ncol=1, fancybox=True)
 
 # COMMAND ----------
 
-# MAGIC %md  The segment design we came up with does not produce equal sized groupings.  Instead, we have one group a bit larger than the others, though the smaller groups are still of a size where they are useful to our team:
+# MAGIC %md  私たちが考えたセグメントデザインは、同じ大きさのグループを作るのではありません。 その代わり、1つのグループは他のグループより少し大きくなりますが、小さなグループもチームにとって有用な大きさです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Count Cluster Members
+# DBTITLE 1,クラスタあたりのメンバー数を見る
 # count members per cluster
 cluster_member_counts = labeled_finalfeatures_pd.groupby([cluster_column]).agg({cluster_column:['count']})
 cluster_member_counts.columns = cluster_member_counts.columns.droplevel(0)
@@ -117,11 +117,11 @@ for index, value in zip(cluster_member_counts.index, cluster_member_counts['coun
 
 # COMMAND ----------
 
-# MAGIC %md Let's now examine how each segment differs relative to our base features.  For our categorical features, we'll plot the proportion of cluster members identified as participating in a specific promotional activity relative to the overall number of cluster members. For our continuous features, we will visualize values using a whisker plot:
+# MAGIC %md 次に、各セグメントが基本特徴量と比較してどのように異なるかを検証してみましょう。 カテゴリ特徴については、クラスタ・メンバー全体の数に対する、特定のプロモーション活動に参加していると識別されたクラスタ・メンバーの割合をプロットします。連続特徴量については、ひげプロットを用いて値を可視化します。
 
 # COMMAND ----------
 
-# DBTITLE 1,Define Function to Render Plots
+# DBTITLE 1,プロット描画のための関数を定義する
 def profile_segments_by_features(data, features_to_plot, label_to_plot, label_count, label_colors):
   
     feature_count = len(features_to_plot)
@@ -215,7 +215,7 @@ def profile_segments_by_features(data, features_to_plot, label_to_plot, label_co
 
 # COMMAND ----------
 
-# DBTITLE 1,Render Plots for All Base Features
+# DBTITLE 1,全特徴量ごとのレンダリングプロット
 # get feature names
 feature_names = labeled_basefeatures_pd.drop(label_columns, axis=1).columns
 
@@ -224,26 +224,26 @@ profile_segments_by_features(labeled_basefeatures_pd, feature_names, cluster_col
 
 # COMMAND ----------
 
-# MAGIC %md There's a lot to examine in this plot but the easiest thing seems to be to start with the categorical features to identify groups responsive to some promotional offers and not others.  The continuous features then provide a bit more insight into the degree of engagement when that cluster does respond.  
+# MAGIC %md このプロットには検討すべきことがたくさんありますが、最も簡単なのは、あるプロモーション・オファーに反応するグループとしないグループを識別するために、カテゴリ的特徴から始めることだと思われます。 連続的な特徴は、そのクラスタが反応したときのエンゲージメントの度合いについて、もう少し詳しく知ることができます。 
 # MAGIC 
-# MAGIC As you work your way through the various features, you will likely start to form descriptions of the different clusters.  To assist with that, it might help to retrieve specific subsets of features to focus your attention on a smaller number of features:
+# MAGIC 様々な機能を使いこなすうちに、異なるクラスタについての説明ができ始めるでしょう。 これを支援するために、特徴の特定のサブセットを取り出し、より少ない数の特徴に注意を集中させることが有効な場合があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Plot Subset of Features
+# DBTITLE 1,いくつかをピックアップ
 feature_names = ['has_pdates_campaign_targeted', 'pdates_campaign_targeted', 'amount_list_with_campaign_targeted']
 
 profile_segments_by_features(labeled_basefeatures_pd, feature_names, cluster_column, cluster_count, cluster_colors)
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 3: Describe Segments
+# MAGIC %md ## ステップ3：セグメントの記述
 # MAGIC 
-# MAGIC With close examination of the features you should hopefully come to differentiate the clusters in terms of their behavior.  Now it becomes interesting to examine why these groups might exist and/or how we might be able to identify likely group membership without collecting multiple years of behavioral information. A common way to do this is to examine the clusters in terms of characteristics that were not employed in the cluster design. With this dataset, we might employ demographic information available for a subset of our households for this purpose:
+# MAGIC 特徴をよく調べると、行動の観点からクラスターを区別できるようになることが期待されます。 ここで、これらのグループがなぜ存在するのか、また、複数年の行動情報を収集することなく、どのようにしてグループのメンバーである可能性を特定することができるのかを検討することが興味深くなってきます。これを行う一般的な方法は、クラスター設計で採用されなかった特性からクラスターを調べることです。このデータセットでは、この目的のために、世帯の一部で利用可能な人口統計学的情報を使用することができる。
 
 # COMMAND ----------
 
-# DBTITLE 1,Associate Household Demographics with Cluster Labels
+# DBTITLE 1,世帯の属性とクラスターラベルの関連付け
 labels = spark.table('DELTA.`/tmp/completejourney/gold/household_clusters/`').alias('labels')
 demographics = spark.table('journey.households').alias('demographics')
 
@@ -258,11 +258,11 @@ labeled_demos
 
 # COMMAND ----------
 
-# MAGIC %md Before proceeding, we need to consider how many of our members in cluster have demographic information associated with them:
+# MAGIC %md 先に進む前に、クラスタ内のメンバーのうち何人がデモグラフィック情報を持っているのかを考える必要があります。
 
 # COMMAND ----------
 
-# DBTITLE 1,Examine Proportion of Cluster Members with Demographic Data
+# DBTITLE 1,人口統計データを持つクラスター構成員の割合の検討
 x = labeled_demos.groupby([cluster_column, 'matched']).agg({cluster_column:['count']})
 x.columns = x.columns.droplevel(0)
 
@@ -292,9 +292,9 @@ for c in range(cluster_count):
 
 # COMMAND ----------
 
-# MAGIC %md Ideally, we would have demographic data for all households in the dataset or least for a large, consistent proportion of members across each cluster.  Without that, we need to be cautious about drawing any conclusions from these data.
+# MAGIC %md 理想的には、データセットに含まれる全世帯の人口統計データがあるか、少なくとも各クラスターに含まれるメンバーの大規模で一貫した割合の人口統計データがあることが望ましい。 そうでなければ、これらのデータから結論を導き出すことには慎重でなければならない。
 # MAGIC 
-# MAGIC Still, we might continue with the exercise in order to demonstrate technique.  With that in mind, let's construct a contingency table for head of household age-bracket to see how cluster members align around age:
+# MAGIC それでも、テクニックを示すために、この演習を続けるかもしれません。 このことを念頭に置いて、世帯主の年齢層について分割表を作成し、クラスタのメンバーがどのように年齢を中心に並んでいるかを見てみましょう。
 
 # COMMAND ----------
 
@@ -304,30 +304,30 @@ age_by_cluster.table_orig
 
 # COMMAND ----------
 
-# MAGIC %md We might then apply Pearson's Chi-squared (*&Chi;^2*) test to determine whether these frequency differences were statistically meaningful.  In such a test, a p-value of less than or equal to 5% would tell us that the frequency distributions were not likely due to chance (and are therefore dependent upon the category assignment):
+# MAGIC %md そこで、ピアソンのカイ二乗(*&Chi;^2*)検定を適用して、これらの頻度差が統計的に有意であるかどうかを判断することができるかもしれません。 このような検定では、5%以下のp値は、頻度分布が偶然によるものではない（したがって、カテゴリー割り当てに依存する）ことを教えてくれるでしょう。
 
 # COMMAND ----------
 
-# DBTITLE 1,Demonstrate Chi-Squared Test
+# DBTITLE 1,カイ二乗検定
 res = age_by_cluster.test_nominal_association()
 res.pvalue
 
 # COMMAND ----------
 
-# MAGIC %md We would then be able to examine the Pearson's residuals associated with the intersection of each cluster and demographic group to determine when specific intersections were driving us to this conclusion.  Intersections with **absolute** residual values of greater than 2 or 4 would differ from expectations with a 95% or 99.9% probability, respectively, and these would likely be the demographic characteristics that would differentiate the clusters:
+# MAGIC %md その後、各クラスターと人口統計グループの交点に関連するピアソンの残差を調べ、特定の交点がいつこの結論に至ったかを判断することができるだろう。 残差値が2または4以上の交差点は、それぞれ95%または99.9%の確率で予想と異なり、これらはクラスターを区別する人口統計学的特性である可能性が高いです。
 
 # COMMAND ----------
 
-# DBTITLE 1,Demonstrate Pearson Residuals
+# DBTITLE 1,ピアソン残差の実証実験
 age_by_cluster.resid_pearson  # standard normal random variables within -2, 2 with 95% prob and -4,4 at 99.99% prob
 
 # COMMAND ----------
 
-# MAGIC %md If we had found something meaningful in this data, our next challenge would be to communicate it to members of the team not familiar with these statistical tests.  A popular way for doing this is through a *[mosaic plot](https://www.datavis.ca/papers/casm/casm.html#tth_sEc3)* also known as a *marimekko plot*:
+# MAGIC %md もし、このデータから何か意味のあるものを見つけたとしたら、次の課題は、これらの統計的検定に慣れていないチームのメンバーにそれを伝えることでしょう。 これを行うための一般的な方法は、 *[mosaic plot](https://www.datavis.ca/papers/casm/casm.html#tth_sEc3)* またの名を *marimekko plot* です。
 
 # COMMAND ----------
 
-# DBTITLE 1,Demonstrate Mosaic Plot
+# DBTITLE 1,モザイクプロット
 # assemble demographic category labels as key-value pairs (limit to matched values)
 demo_labels = np.unique(labeled_demos[labeled_demos['matched']]['age_bracket'])
 demo_labels_kv = dict(zip(demo_labels,demo_labels))
@@ -354,10 +354,14 @@ _ = fig.set_size_inches((10,8))
 
 # COMMAND ----------
 
-# MAGIC %md The proportional display of members associated with each category along with the proportional width of the clusters relative to each other provides a nice way to summarize the frequency differences between these groups. Coupled with statistical analysis, the mosaic plot provides a nice way to make a statistically significant finding more easily comprehended.
+# MAGIC %md 各カテゴリーに関連するメンバーの比例表示と、クラスタの相対的な幅の比例表示により、これらのグループ間の頻度差を要約する良い方法となります。統計解析と組み合わせて、モザイクプロットは、統計的に有意な発見をより簡単に理解するための素晴らしい方法を提供します。
 
 # COMMAND ----------
 
-# MAGIC %md ## Step 4: Next Steps
+# MAGIC %md ## ステップ4：次のステップ
 # MAGIC 
-# MAGIC Segmentation is rarely a one-and-done exercise. Instead, having learned from this pass with the data, we might repeat the analysis, removing non-differentiating features and possibly including others. In addition, we might perform other analyses such as RFM segmentations or CLV analysis and then examine how these relate to the segmentation design explored here.  Eventually, we may arrive at a new segmentation design, but even if we don't, we have gained insights which may help us better craft promotional campaigns.
+# MAGIC セグメンテーションは、1回で終了することはほとんどない。むしろ、今回のデータから学んだことで、差別化できない特徴を取り除き、場合によっては他の特徴を加えて、分析を繰り返すかもしれない。さらに、RFMセグメンテーションやCLV分析など、他の分析も行い、ここで検討したセグメンテーションデザインとの関連性を検討することもある。 最終的には、新しいセグメンテーションデザインに到達するかもしれないが、そうでない場合でも、より良いプロモーションキャンペーンを作るのに役立つ洞察を得ることができたといえる。
+
+# COMMAND ----------
+
+
