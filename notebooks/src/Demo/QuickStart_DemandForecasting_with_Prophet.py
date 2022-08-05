@@ -341,7 +341,7 @@ spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 # MAGIC SELECT
 # MAGIC   *
 # MAGIC FROM
-# MAGIC   handson20220810.mk1112_predicted
+# MAGIC   handson20220810.<自分のユニーク文字列>_predicted
 # MAGIC ```
 # MAGIC 
 # MAGIC ###### 3.2 上記クエリを実行して、テーブル結果を表示。その後、テーブル結果の右上の「+ビジュアライゼーションを追加」で、Lineチャートを作成。結果タブからチャートの名前「`売り上げ予想`」に変更する。
@@ -364,7 +364,7 @@ spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 # MAGIC     TRUNC(date, 'MM') as month,
 # MAGIC     item,
 # MAGIC     SUM(sales) as sales
-# MAGIC   FROM handson20220810.mk1112_history
+# MAGIC   FROM handson20220810.<自分のユニーク文字列>_history
 # MAGIC   GROUP BY TRUNC(date, 'MM'), item
 # MAGIC   ) x
 # MAGIC GROUP BY MONTH(month), item
