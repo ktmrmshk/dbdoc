@@ -1,8 +1,8 @@
 # Databricks notebook source
 # MAGIC %md # 売上の需要予測と可視化
 # MAGIC 
-# MAGIC * データ: KaggleのInstacart
-# MAGIC * 需要予測ライブラリ: Prophet
+# MAGIC * データ: [Kaggleの"Store Item Demand Forecasting Challenge"](https://www.kaggle.com/c/demand-forecasting-kernels-only/data?select=train.csv)のデータを使用
+# MAGIC * 需要予測ライブラリ: [Prophet](https://qiita.com/ktmrmshk/items/79520d5beed1787f595e)
 # MAGIC * 流れ
 # MAGIC   1. データを準備する
 # MAGIC   1. データの感触をつかむ (探索・EDA・簡単に可視化)
@@ -115,6 +115,46 @@ display(s_df_train)
 # MAGIC  ) x
 # MAGIC GROUP BY year, weekday
 # MAGIC ORDER BY year, weekday;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- アイテム毎・月毎のトレンド
+# MAGIC 
+# MAGIC SELECT -- アイテム毎で、月売上の平均を算出
+# MAGIC   MONTH(month) as month,
+# MAGIC   item,
+# MAGIC   AVG(sales) as sales
+# MAGIC FROM (
+# MAGIC   SELECT -- 月ごとの売り上げで集計したテーブルをサブクエリに
+# MAGIC     TRUNC(date, 'MM') as month,
+# MAGIC     item,
+# MAGIC     SUM(sales) as sales
+# MAGIC   FROM train
+# MAGIC   GROUP BY TRUNC(date, 'MM'), item
+# MAGIC   ) x
+# MAGIC GROUP BY MONTH(month), item
+# MAGIC ORDER BY month, item
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- 店舗毎・月毎のトレンド
+# MAGIC 
+# MAGIC SELECT -- 店舗毎で、月売上の平均を算出
+# MAGIC   MONTH(month) as month,
+# MAGIC   store,
+# MAGIC   AVG(sales) as sales
+# MAGIC FROM (
+# MAGIC   SELECT -- 月ごとの売り上げで集計したテーブルをサブクエリに
+# MAGIC     TRUNC(date, 'MM') as month,
+# MAGIC     store,
+# MAGIC     SUM(sales) as sales
+# MAGIC   FROM train
+# MAGIC   GROUP BY TRUNC(date, 'MM'), store
+# MAGIC   ) x
+# MAGIC GROUP BY MONTH(month), store
+# MAGIC ORDER BY month, store;
 
 # COMMAND ----------
 
@@ -249,11 +289,21 @@ table_name = 'mk1112'
 
 spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 
+# 「予測結果」をテーブルとして保存
 (
   spark.createDataFrame(forecast_pd)
   .write
   .mode('overwrite')
-  .saveAsTable(f'{database_name}.{table_name}') # マネージドテーブルで保存(システム側でデータの保存先を自動で管理する方式。ユーザーがデータ保存先パスを指定しなくていい)
+  .saveAsTable(f'{database_name}.{table_name}_predicted') # マネージドテーブルで保存(システム側でデータの保存先を自動で管理する方式。ユーザーがデータ保存先パスを指定しなくていい)
+)
+
+
+# 「もとの売り上げデータ」もテーブルとして保存(予測と実績値を比較するのに使用)
+(
+  s_df_train
+  .write
+  .mode('overwrite')
+  .saveAsTable(f'{database_name}.{table_name}_history')
 )
 
 # COMMAND ----------
@@ -269,7 +319,68 @@ spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 
 # COMMAND ----------
 
-
+# MAGIC %md
+# MAGIC 
+# MAGIC 以下のようなダッシュボードを作成します。
+# MAGIC 
+# MAGIC ![dashboard](https://sajpstorage.blob.core.windows.net/demo-asset-workshop2021/example/dashbaord_example.png)
+# MAGIC 
+# MAGIC ##### 1. 左メニューの一番上のスイッチUIから「SQL」を選択してDatabricks SQLへ移動する。
+# MAGIC 
+# MAGIC ----
+# MAGIC 
+# MAGIC ##### 2. データカタログ上でテーブル確認 
+# MAGIC ###### 2.1 左メニューの「データ」から上記で作成したテーブル(`hive_metastore > handson20220810 > 自分ユニークな名前のテーブル`)を確認する。
+# MAGIC 
+# MAGIC * UIからスキーマ、サンプルデータなどを確認
+# MAGIC 
+# MAGIC ----
+# MAGIC 
+# MAGIC ##### 3. 売り上げ予測のグラグを作る
+# MAGIC ###### 3.1　. 左メニューから「SQLエディタ」を開いて、以下のSQLをコピー&ペーストし、「`{自分のユニーク文字列}_売り上げ予想`」という名前で保存。
+# MAGIC 
+# MAGIC ```
+# MAGIC SELECT
+# MAGIC   *
+# MAGIC FROM
+# MAGIC   handson20220810.mk1112_predicted
+# MAGIC ```
+# MAGIC 
+# MAGIC ###### 3.2 上記クエリを実行して、テーブル結果を表示。その後、テーブル結果の右上の「+ビジュアライゼーションを追加」で、Lineチャートを作成。結果タブからチャートの名前「`売り上げ予想`」に変更する。
+# MAGIC 
+# MAGIC * x軸(横軸): `ds`
+# MAGIC * y軸(縦軸): `yhat`, `yhat_upper`, `yhat_lower`
+# MAGIC 
+# MAGIC ----
+# MAGIC 
+# MAGIC ##### 4. 実績値のグラグを作る
+# MAGIC ###### 4.1 左メニューから「SQLエディタ」を開いて、以下のSQLをコピー&ペーストし、「`{自分のユニーク文字列}_アイテム毎・月毎のトレンド`」という名前で保存。
+# MAGIC 
+# MAGIC ```
+# MAGIC SELECT -- アイテム毎で、月売上の平均を算出
+# MAGIC   MONTH(month) as month,
+# MAGIC   item,
+# MAGIC   AVG(sales) as sales
+# MAGIC FROM (
+# MAGIC   SELECT -- 月ごとの売り上げで集計したテーブルをサブクエリに
+# MAGIC     TRUNC(date, 'MM') as month,
+# MAGIC     item,
+# MAGIC     SUM(sales) as sales
+# MAGIC   FROM handson20220810.mk1112_history
+# MAGIC   GROUP BY TRUNC(date, 'MM'), item
+# MAGIC   ) x
+# MAGIC GROUP BY MONTH(month), item
+# MAGIC ORDER BY month, item
+# MAGIC ```
+# MAGIC 
+# MAGIC ###### 4.2 step4, 5と同様に適宜名前を置き換えて実施する
+# MAGIC 
+# MAGIC ----
+# MAGIC 
+# MAGIC ##### 5. 複数のグラフを一つのダッシュボードにまとめる
+# MAGIC ###### 5.1 左メニューから「ダッシュボード」を選択し、その後「ダッシュボードを作成」から「`{自分のユニーク文字列}_ダッシュボード`」という名前で作成する
+# MAGIC ###### 5.2 ダッシュボード(編集モード)の上部「追加 > 可視化」から上記で作成した2つのグラフを追加・配置する
+# MAGIC ###### 5.3 「編集完了」ボタンで固定化できる。他のグラフを追加する場合は、再度「編集」ボタンを押す
 
 # COMMAND ----------
 
@@ -279,7 +390,8 @@ spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 
 # MAGIC %sql
 # MAGIC -- adminの方が1度実行すればクリーンアップできます。
-# MAGIC DROP DATABASE handson20220810 CASCADE
+# MAGIC -- (全参加者でデータベース名を同じにしているので)
+# MAGIC DROP DATABASE IF EXISTS handson20220810 CASCADE
 
 # COMMAND ----------
 
