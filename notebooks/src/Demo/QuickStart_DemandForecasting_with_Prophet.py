@@ -285,8 +285,6 @@ database_name = 'handson20220810'
 table_name = 'ここを自分の名前などのユニークな文字列に置き換えてください!'
 # 例 table_name = 'mk1112'
 
-table_name = 'mk1112'
-
 spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 
 # 「予測結果」をテーブルとして保存
@@ -310,8 +308,8 @@ spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 
 # MAGIC %sql
 # MAGIC --永続化したデータを確認する
-# MAGIC SELECT * FROM handson20220810.<上で自身がつけたテーブル名>
-# MAGIC -- 例) SELECT * FROM handson20220810.mk1112
+# MAGIC SELECT * FROM handson20220810.<上で自身がつけたテーブル名>_predicted
+# MAGIC -- 例) SELECT * FROM handson20220810.mk1112_predicted
 
 # COMMAND ----------
 
@@ -392,7 +390,3 @@ spark.sql(f'CREATE DATABASE IF NOT EXISTS {database_name}')
 # MAGIC -- adminの方が1度実行すればクリーンアップできます。
 # MAGIC -- (全参加者でデータベース名を同じにしているので)
 # MAGIC DROP DATABASE IF EXISTS handson20220810 CASCADE
-
-# COMMAND ----------
-
-
